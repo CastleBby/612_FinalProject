@@ -1,0 +1,19 @@
+absl-py==2.1.0
+aiohttp==3.9.4
+aiosignal==1.3.1
+alembic==1.13.1
+altgraph @ file:///AppleInternal/Library/BuildRoots/4~B7IEugDHS-fAL-bTRqAKCb_qm$
+anyio==4.3.0
+apache-airflow==2.9.0
+apache-airflow-providers-common-io==1.3.0
+apache-airflow-providers-common-sql==1.11.1
+apache-airflow-providers-fab==1.0.2
+apache-airflow-providers-ftp==3.7.0
+apache-airflow-providers-http==4.10.0
+apache-airflow-providers-imap==3.5.0
+apache-airflow-providers-smtp==1.6.1
+apache-airflow-providers-sqlite==3.7.1
+apispec==6.6.0
+appnope==0.1.4
+argcomplete==3.2.3
+argon2-cffi==23.1.0
