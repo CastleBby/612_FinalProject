@@ -1,0 +1,21 @@
+# Conda environments and caches
+.conda_envs/
+.conda_pkgs/
+.conda/
+.cache/
+.nv/
+.condarc
+
+# Python caches and virtual env artifacts
+__pycache__/
+*.pyc
+
+# Generated datasets and checkpoints
+md_weather_data.csv
+processed_data.npz
+best_model.pth
+train.log
+
+# Analysis outputs
+fig*.png
+
