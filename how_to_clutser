@@ -1,0 +1,16 @@
+#use scatch directory, not home(home has very limited storage)
+cd scratch
+
+#Create virtual-env
+python3.11 -m venv venv
+source venv/bin/activate
+
+
+#install required dependencies, currently used are listed below
+pip install --upgrade pip setuptools wheel
+pip install numpy pandas scikit-learn requests pyyaml tqdm matplotlib
+
+pip install --extra-index-url https://download.pytorch.org/whl/cu128 \
+  torch torchvision torchaudio
+
+#run on cluster files using sbatch command, see run_train.sbatch file for example 
