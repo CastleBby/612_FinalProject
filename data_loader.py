@@ -36,21 +36,51 @@ def fetch_openmeteo_data(lat, lon, start_date, end_date, variables):
     return df.set_index('time')
 
 
+def add_temporal_features(df):
+    """Add temporal features for better pattern recognition."""
+    # Cyclical encoding for hour (0-23)
+    df['hour_sin'] = np.sin(2 * np.pi * df.index.hour / 24)
+    df['hour_cos'] = np.cos(2 * np.pi * df.index.hour / 24)
+
+    # Cyclical encoding for day of year (1-365)
+    day_of_year = df.index.dayofyear
+    df['day_sin'] = np.sin(2 * np.pi * day_of_year / 365)
+    df['day_cos'] = np.cos(2 * np.pi * day_of_year / 365)
+
+    # Month as cyclical feature
+    df['month_sin'] = np.sin(2 * np.pi * df.index.month / 12)
+    df['month_cos'] = np.cos(2 * np.pi * df.index.month / 12)
+
+    return df
+
+
 if __name__ == '__main__':
     # ------------------------------------------------------------------
     # 1. Load config & fetch raw data
     # ------------------------------------------------------------------
+    import time
     cfg = load_config()
     all_raw_dfs = []
     print("Fetching data for MD locations...")
-    for loc in tqdm(cfg['data']['locations']):
+    for i, loc in enumerate(tqdm(cfg['data']['locations'])):
+        if i > 0:
+            # Add delay to avoid API rate limit
+            time.sleep(70)  # Wait 70 seconds between requests
         df = fetch_openmeteo_data(
             loc['lat'], loc['lon'],
             cfg['data']['start_date'],
             cfg['data']['end_date'],
             cfg['data']['variables']
         )
-        df = df.interpolate(method='linear').dropna()
+        # Interpolate missing values
+        df = df.interpolate(method='linear').bfill().ffill()
+
+        # Add temporal features
+        df = add_temporal_features(df)
+
+        # Drop any remaining NaN
+        df = df.dropna()
+
         all_raw_dfs.append(df)
 
     # Save the concatenated raw CSV (optional, for inspection)
@@ -58,10 +88,21 @@ if __name__ == '__main__':
     full_raw.to_csv('md_weather_data.csv')
     print(f"Raw data saved: {len(full_raw)} rows across {len(cfg['data']['locations'])} locations.")
 
+    # Print data quality statistics
+    print("\n=== Data Quality Report ===")
+    for var in cfg['data']['variables']:
+        print(f"{var:25s} - Mean: {full_raw[var].mean():8.2f}, Std: {full_raw[var].std():8.2f}, "
+              f"Min: {full_raw[var].min():8.2f}, Max: {full_raw[var].max():8.2f}")
+    print(f"Precipitation > 0.1mm:    {(full_raw['precipitation'] > 0.1).sum()} hours ({(full_raw['precipitation'] > 0.1).mean()*100:.1f}%)")
+    print(f"Extreme events (>90th):   {(full_raw['precipitation'] > full_raw['precipitation'].quantile(0.9)).sum()} hours")
+
     # ------------------------------------------------------------------
     # 2. Build per-location sequences + location IDs
     # ------------------------------------------------------------------
     variables = cfg['data']['variables']
+    temporal_features = ['hour_sin', 'hour_cos', 'day_sin', 'day_cos', 'month_sin', 'month_cos']
+    all_features = variables + temporal_features
+
     seq_len   = cfg['data']['seq_len']
     horizon   = cfg['data']['pred_horizon']
     precip_idx = variables.index('precipitation')
@@ -70,20 +111,27 @@ if __name__ == '__main__':
     loc_map = {f"{loc['lat']:.2f}_{loc['lon']:.2f}": i
                for i, loc in enumerate(cfg['data']['locations'])}
 
+    # Collect all data first to fit scaler properly
+    print("\n=== Building sequences with temporal features ===")
+    all_data_for_scaler = []
+    for df in all_raw_dfs:
+        all_data_for_scaler.append(df[all_features].values)
+
+    # Fit scaler on ALL data (not just first station!)
+    all_data_combined = np.vstack(all_data_for_scaler)
+    scaler = MinMaxScaler()
+    scaler.fit(all_data_combined)
+    print(f"Scaler fitted on {len(all_data_combined):,} total samples")
+
+    # Now build sequences per location
     all_X, all_y, all_loc = [], [], []
-    scaler = None                     # one global scaler
 
     for df in all_raw_dfs:
         loc_key = df['location'].iloc[0]
         loc_id  = loc_map[loc_key]
 
-        # keep only the numeric columns we need
-        data = df[variables].values
-
-        if scaler is None:
-            scaler = MinMaxScaler()
-            scaler.fit(data)          # fit on the first station (distributions are similar)
-
+        # Get all features (weather + temporal)
+        data = df[all_features].values
         data_scaled = scaler.transform(data)
 
         X_loc, y_loc = [], []
@@ -106,6 +154,9 @@ if __name__ == '__main__':
     X       = np.concatenate(all_X, axis=0)
     y       = np.concatenate(all_y, axis=0)
     loc_idx = np.concatenate(all_loc, axis=0)
+
+    print(f"Total sequences: {len(X):,}")
+    print(f"Input shape: {X.shape} (includes {len(temporal_features)} temporal features)")
 
     # ------------------------------------------------------------------
     # 3. Train / Val / Test split (temporal → shuffle=False)
@@ -135,4 +186,4 @@ if __name__ == '__main__':
              loc_train=loc_train, loc_val=loc_val, loc_test=loc_test,
              scaler=scaler)
 
-    print(f"Sequences ready → Train={len(X_train)} | Val={len(X_val)} | Test={len(X_test)}")
+    print(f"Sequences ready -> Train={len(X_train)} | Val={len(X_val)} | Test={len(X_test)}")

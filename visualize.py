@@ -60,7 +60,12 @@ model = get_model(
     num_locations=len(cfg['data']['locations']),
     feature_groups=cfg['model']['feature_groups']
 )
-model.load_state_dict(torch.load('best_model.pth', map_location='cpu'))
+checkpoint = torch.load('best_model.pth', map_location='cpu')
+if isinstance(checkpoint, dict) and 'model_state_dict' in checkpoint:
+    model.load_state_dict(checkpoint['model_state_dict'])
+    print(f"Loaded model from epoch {checkpoint.get('epoch', 'unknown')}")
+else:
+    model.load_state_dict(checkpoint)
 model.eval()
 
 

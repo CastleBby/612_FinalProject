@@ -39,7 +39,12 @@ model = get_model(
     num_locations=len(cfg['data']['locations']),
     feature_groups=cfg['model']['feature_groups']
 )
-model.load_state_dict(torch.load('best_model.pth', map_location='cpu'))
+checkpoint = torch.load('best_model.pth', map_location='cpu')
+if isinstance(checkpoint, dict) and 'model_state_dict' in checkpoint:
+    model.load_state_dict(checkpoint['model_state_dict'])
+    print(f"Loaded model from epoch {checkpoint.get('epoch', 'unknown')}")
+else:
+    model.load_state_dict(checkpoint)
 model.eval()
 
 # -------------------------------------------------
@@ -195,34 +200,48 @@ print("Saved: fig6_lr_curves.png")
 # -------------------------------------------------
 # 7. Figure 7: Attention Heatmap (Heaviest Event)
 # -------------------------------------------------
-# Hook to capture attention weights
+# Hook to capture attention weights from the last transformer layer
 attn_weights = None
 def get_attention(module, input, output):
     global attn_weights
-    attn_weights = output[1].detach().cpu().numpy()  # (head, seq, seq)
+    # MultiheadAttention returns (output, attn_weights)
+    # attn_weights shape: (batch, num_heads, seq_len, seq_len)
+    if output[1] is not None:
+        attn_weights = output[1].detach().cpu().numpy()
 
-# Register hook on last multi-scale attention layer
-handle = model.multi_scale.attn1.register_forward_hook(get_attention)
+# Register hook on the last encoder layer's self-attention
+last_layer_idx = len(model.encoder_layers) - 1
+handle = model.encoder_layers[last_layer_idx].self_attn.register_forward_hook(get_attention)
+
+# Enable attention weights output for visualization
+model.encoder_layers[last_layer_idx].self_attn.need_weights = True
 
 with torch.no_grad():
     _ = model(x_sample, loc_sample)
 
 handle.remove()
 
-# Average over heads
-attn_map = attn_weights.mean(axis=0)  # (24, 24)
+# Check if attention weights were captured
+if attn_weights is not None and len(attn_weights.shape) >= 3:
+    # Average over batch and heads: (batch, heads, seq, seq) -> (seq, seq)
+    if len(attn_weights.shape) == 4:
+        attn_map = attn_weights[0].mean(axis=0)  # Take first batch, average over heads
+    else:
+        attn_map = attn_weights.mean(axis=0)  # Average over heads
 
-plt.figure(figsize=(10, 8))
-im = plt.imshow(attn_map, cmap='viridis', aspect='auto')
-plt.colorbar(im, fraction=0.046, pad=0.04, label='Attention Weight')
-plt.title('Attention Heatmap (Heaviest Flash Flood Event)', fontsize=16)
-plt.xlabel('Key Position (Hour)', fontsize=12)
-plt.ylabel('Query Position (Hour)', fontsize=12)
-plt.xticks(np.arange(0, 24, 2), np.arange(-23, 1, 2))
-plt.yticks(np.arange(0, 24, 2), np.arange(-23, 1, 2))
-plt.tight_layout()
-plt.savefig('fig7_attention_heatmap.png', dpi=300, bbox_inches='tight')
-plt.close()
-print("Saved: fig7_attention_heatmap.png")
+    plt.figure(figsize=(10, 8))
+    im = plt.imshow(attn_map, cmap='viridis', aspect='auto')
+    plt.colorbar(im, fraction=0.046, pad=0.04, label='Attention Weight')
+    plt.title('Attention Heatmap (Heaviest Flash Flood Event)', fontsize=16)
+    plt.xlabel('Key Position (Hour)', fontsize=12)
+    plt.ylabel('Query Position (Hour)', fontsize=12)
+    plt.xticks(np.arange(0, 24, 2), np.arange(-23, 1, 2))
+    plt.yticks(np.arange(0, 24, 2), np.arange(-23, 1, 2))
+    plt.tight_layout()
+    plt.savefig('fig7_attention_heatmap.png', dpi=300, bbox_inches='tight')
+    plt.close()
+    print("Saved: fig7_attention_heatmap.png")
+else:
+    print("Warning: Could not capture attention weights. Skipping attention heatmap.")
 
 print("\nAll 7 figures generated! Ready for your paper.")

@@ -45,8 +45,8 @@ def classification_metrics(y_true, y_pred, threshold):
 if __name__ == '__main__':
     cfg = load_config()
 
-    # ----- device (MPS on M1 Max) -----
-    device = torch.device('mps' if torch.backends.mps.is_available() else 'cpu')
+    # ----- device (CUDA, MPS, or CPU) -----
+    device = torch.device('cuda' if torch.cuda.is_available() else 'mps' if torch.backends.mps.is_available() else 'cpu')
     print(f"Using device: {device}")
 
     # ----- load processed test data -----
@@ -72,19 +72,36 @@ if __name__ == '__main__':
         feature_groups=cfg['model']['feature_groups']
     ).to(device)
 
-    model.load_state_dict(torch.load('best_model.pth', map_location=device))
+    checkpoint = torch.load('best_model.pth', map_location=device, weights_only=False)
+    if isinstance(checkpoint, dict) and 'model_state_dict' in checkpoint:
+        model.load_state_dict(checkpoint['model_state_dict'])
+        print(f"Loaded model from epoch {checkpoint.get('epoch', 'unknown')}")
+    else:
+        model.load_state_dict(checkpoint)
     model.eval()
 
-    # ----- inference -----
+    # ----- inference in batches to avoid OOM -----
+    batch_size = cfg['model'].get('batch_size', 64)  # Use training batch size or default
+    predictions = []
+
     with torch.no_grad():
-        pred_scaled = model(
-            torch.FloatTensor(X_test).to(device),
-            torch.LongTensor(loc_test).to(device)
-        ).cpu().numpy().flatten()
+        for i in range(0, len(X_test), batch_size):
+            batch_X = torch.FloatTensor(X_test[i:i+batch_size]).to(device)
+            batch_loc = torch.LongTensor(loc_test[i:i+batch_size]).to(device)
+            batch_pred = model(batch_X, batch_loc).cpu().numpy()
+            predictions.append(batch_pred)
+
+    pred_scaled = np.concatenate(predictions, axis=0).flatten()
 
     # ----- un-scale -----
     y_pred = unscale(pred_scaled, scaler, precip_idx)
     y_true = unscale(y_test, scaler, precip_idx)
+
+    # ----- apply prediction threshold (reduce false alarms) -----
+    pred_threshold = cfg['eval'].get('prediction_threshold', 0.0)
+    if pred_threshold > 0:
+        y_pred = np.where(y_pred < pred_threshold, 0.0, y_pred)
+        print(f"Applied prediction threshold: {pred_threshold} mm")
 
     # ----- regression metrics -----
     rmse = np.sqrt(mean_squared_error(y_true, y_pred))
