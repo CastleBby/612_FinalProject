@@ -1,0 +1,51 @@
+# Improved transformer configuration (deeper encoder, narrower width)
+data:
+  start_date: '2010-01-01'
+  end_date: '2020-12-31'
+  locations:
+    - name: 'Baltimore'
+      lat: 39.29
+      lon: -76.61
+    - name: 'Annapolis'
+      lat: 38.98
+      lon: -76.49
+    - name: 'Cumberland'
+      lat: 39.62
+      lon: -78.76
+    - name: 'Ocean City'
+      lat: 38.34
+      lon: -75.08
+    - name: 'Hagerstown'
+      lat: 39.64
+      lon: -77.72
+  variables: ['temperature_2m', 'relative_humidity_2m', 'precipitation', 'pressure_msl', 'wind_speed_10m']
+  seq_len: 24
+  pred_horizon: 1
+  test_split: 0.15
+  val_split: 0.15
+
+model:
+  d_model: 160       # slightly wider to regain capacity while keeping 32-dim heads
+  nhead: 5           # 160 / 5 = 32
+  num_layers: 4      # shallower encoder to reduce overfitting pressure
+  embed_dim: 56
+  dropout: 0.12      # bump regularization to fight early overfitting seen in the deep variant
+  lr: 0.00015        # nudge LR up for better optimization
+  weight_decay: 0.01 # decoupled weight decay for generalization
+  batch_size: 64
+  epochs: 40
+  warmup_epochs: 3
+  early_stop_patience: 6
+  overprediction_weight: 2.0  # stronger penalty when forecasts exceed observations
+  cls_weight: 3.0             # heavier weight for the rain/no-rain classification loss (reduce false positives)
+  feature_groups:
+    thermo: [0, 1]
+    hydro: [2, 3]
+    dynamic: [4]
+  extreme_weight: 1.0  # remove heavy up-weighting to curb the rain-everywhere bias
+
+eval:
+  extreme_threshold: 0.9
+  rain_threshold: 0.1
+  class_threshold: 0.65
+  batch_size: 256

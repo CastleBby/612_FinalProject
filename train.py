@@ -6,6 +6,8 @@ import numpy as np
 import yaml
 from tqdm import tqdm
 import os
+import random
+from pathlib import Path
 from transformer_model import get_model
 
 
@@ -24,6 +26,17 @@ def weighted_mse(y_pred, y_true, precip_obs, quantile=0.9, extreme_weight=5.0):
 
 
 if __name__ == '__main__':
+    # --------------------------------------------------------------
+    # 0. Reproducibility
+    # --------------------------------------------------------------
+    seed = 42
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+
     # --------------------------------------------------------------
     # 1. Config & device
     # --------------------------------------------------------------
@@ -81,6 +94,7 @@ if __name__ == '__main__':
     # 4. Training loop
     # --------------------------------------------------------------
     best_val = float('inf')
+    history = []
     for epoch in range(1, cfg['model']['epochs'] + 1):
         model.train()
         train_loss = 0.0
@@ -119,10 +133,17 @@ if __name__ == '__main__':
         train_loss /= len(train_loader)
         val_loss   /= len(val_loader)
         print(f'Epoch {epoch:02d} | Train {train_loss:.6f} | Val {val_loss:.6f}')
+        history.append({"epoch": epoch, "train_loss": train_loss, "val_loss": val_loss})
 
         if val_loss < best_val:
             best_val = val_loss
             torch.save(model.state_dict(), 'best_model.pth')
             print('  → best model saved')
 
-    print('Training finished.')
+    # save loss history for plotting
+    out_path = Path("training_curve_baseline.csv")
+    with out_path.open("w") as f:
+        f.write("epoch,train_loss,val_loss\n")
+        for row in history:
+            f.write(f"{row['epoch']},{row['train_loss']},{row['val_loss']}\n")
+    print(f'Training finished. Loss curve saved to {out_path}')

@@ -145,9 +145,11 @@ class PrecipitationTransformer(nn.Module):
         dropout: float,
         num_locations: int,
         feature_groups: Dict[str, Iterable[int]],
+        return_cls: bool = False,
     ) -> None:
         super().__init__()
         self.seq_len = seq_len
+        self.return_cls_default = return_cls
 
         self.feature_proj = nn.Linear(input_dim, d_model)
         self.group_encoder = FeatureGroupEncoder(
@@ -176,8 +178,29 @@ class PrecipitationTransformer(nn.Module):
             nn.Dropout(dropout),
             nn.Linear(d_model // 2, 1),
         )
+        # Auxiliary rain/no-rain classifier; trains alongside regression
+        self.class_head = nn.Sequential(
+            nn.LayerNorm(d_model),
+            nn.Linear(d_model, 1),
+        )
 
-    def forward(self, x: torch.Tensor, loc_idx: Optional[torch.Tensor] = None) -> torch.Tensor:
+    def forward(
+        self,
+        x: torch.Tensor,
+        loc_idx: Optional[torch.Tensor] = None,
+        return_cls: Optional[bool] = None,
+    ) -> torch.Tensor:
+        """
+        Args:
+            x: (batch, seq_len, input_dim)
+            loc_idx: (batch,) location indices
+            return_cls: if True, also return rain/no-rain probability
+        Returns:
+            regression prediction, or (regression, classification) if requested
+        """
+        if return_cls is None:
+            return_cls = self.return_cls_default
+
         base = self.feature_proj(x)
         group_features = self.group_encoder(x)
         h = base + group_features
@@ -190,8 +213,11 @@ class PrecipitationTransformer(nn.Module):
         h = self.multi_scale(h)
         h = self.transformer(h)
         h = h[:, -1, :]  # last timestep focus
-        out = self.head(h).squeeze(-1)
-        return out
+        reg_out = self.head(h).squeeze(-1)
+        cls_out = torch.sigmoid(self.class_head(h)).squeeze(-1)
+        if return_cls:
+            return reg_out, cls_out
+        return reg_out
 
 
 def get_model(
@@ -205,6 +231,7 @@ def get_model(
     dropout: float,
     num_locations: int,
     feature_groups: Dict[str, Iterable[int]],
+    return_cls: bool = False,
 ) -> nn.Module:
     if model_type != "transformer":
         raise ValueError(f"Unsupported model_type: {model_type}")
@@ -218,4 +245,5 @@ def get_model(
         dropout=dropout,
         num_locations=num_locations,
         feature_groups=feature_groups,
+        return_cls=return_cls,
     )

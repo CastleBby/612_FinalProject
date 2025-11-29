@@ -17,6 +17,9 @@ This repository reproduces the end-to-end workflow for the 612 Final Project: fe
 
    # PyTorch CPU build (install with pip to avoid libittnotify issues on non-Intel systems)
    pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu torch==2.5.1
+
+   # (Optional) CUDA 12.1 build — Python 3.13 currently has only torch, not torchvision/torchaudio
+   pip install torch==2.5.1+cu121 --index-url https://download.pytorch.org/whl/cu121
    ```
 
 The environment now contains all libraries used by the data preparation, training, and analysis scripts.
@@ -43,30 +46,33 @@ Expect the download and preprocessing step to take a couple of minutes on a typi
 
 ## 3. Model Training
 
-Launch training after the processed dataset exists:
-
+Train the baseline transformer (single-head regression):
 ```bash
 python train.py
 ```
+Saves `best_model.pth` in the repo root.
 
-Key details:
+Train the improved transformer (two-head regression + classifier, gated inference):
+```bash
+python improved_model/train.py
+```
+Saves `improved_model/best_model_deepened.pth`.
 
-- The transformer architecture is defined in `transformer_model.py`.
-- Device selection is automatic (CUDA → MPS → CPU). On CPU the full 50-epoch run takes roughly 45–60 minutes; GPU runtimes are significantly shorter.
-- The best validation checkpoint is saved to `best_model.pth`, and loss statistics are printed each epoch.
-- The weighted MSE loss emphasizes heavy-rain cases via the configuration parameters in `config.yaml`.
-
-If you need a quicker sanity check, temporarily lower `model.epochs` in the config before launching the script.
+Device selection is automatic (CUDA → MPS → CPU). You can shorten runs by lowering `model.epochs` in the corresponding config.
 
 ## 4. Evaluation
 
-Use the held-out test split to benchmark the trained model and compare it with a persistence baseline:
-
+Benchmark both baseline and improved models on the held-out test split:
 ```bash
 python evaluate.py
 ```
+The unified evaluator loads `best_model.pth` and `improved_model/best_model_deepened.pth`, restores the scaler, and prints:
+- RMSE (root-mean-square error; lower is better)
+- MAE (mean absolute error; lower is better)
+- CSI/POD/FAR for rain events (higher CSI/POD is better; lower FAR is better)
+- Extreme-event POD at the configured percentile
 
-The script loads `best_model.pth`, restores the scaler, and reports RMSE, MAE, rain-event CSI metrics, and extreme-event POD. It also prints the same metrics for a persistence forecast (last observed value).
+The improved model uses its classifier to gate low-confidence rain forecasts at inference, which reduces false alarms. The persistence baseline is no longer printed.
 
 ## 5. Visualizations and Analysis
 

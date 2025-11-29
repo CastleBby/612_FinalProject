@@ -5,5 +5,5 @@ requests==2.32.3
 PyYAML==6.0.2
 tqdm==4.66.5
 matplotlib==3.10.0
-torch==2.5.1+cpu ; platform_system == "Linux"
+torch==2.5.1+cpu ; platform_system == "Linux" ##install pytorch-cuda to use on gpu
 torch==2.5.1      ; platform_system != "Linux"
