@@ -17,7 +17,7 @@ I have completed **all major technical items** from the interim plan:
 | Quantile regression (uncertainty)       | Completed  | Figure 10                                |
 | Live FastAPI real-time endpoint         | Completed  | `api.py` + http://127.0.0.1:8000/docs    |
 | Radar fusion via cross-attention        | Completed  | `radar_fusion_model.py`                  |
-| All figures + analysis                  | Completed  | Figures 1–12                             |
+| All figures + analysis                  | Completed  | Figures 1–10                             |
 | Draft Final Report (20 pages)           | Completed  | `Final_Report_Draft_Farhad.pdf`          |
 
 **This branch is a complete, working, submittable version** — ready for team review and final polishing.
