@@ -63,6 +63,7 @@ data_scaled = scaler.fit_transform(df[variables])
 for i in range(len(data_scaled) - 24):
     X.append(data_scaled[i:i+24])        # Input sequence
     y.append(data_scaled[i+24, precip])  # Target
+
 Rationale:
 
 Global scaling maintains consistent feature ranges
@@ -79,8 +80,8 @@ Model multi-scale behavior	Parallel attention heads (1h, 6h, 24h)
 Prioritize extremes	Weighted MSE loss (↑ for 90th percentile)
 
 Multi-Scale Attention Module
-python
-Copy code
+
+
 class MultiScaleAttention(nn.Module):
     def forward(self, x):
         a1 = attn1h(x, x, x)
@@ -88,6 +89,8 @@ class MultiScaleAttention(nn.Module):
         a24 = interpolate(attn24h(x[::24]), size=24)
         cat = torch.cat([a1, a6, a24], dim=-1)
         return out(cat) * torch.sigmoid(gate(cat)) + x
+
+
 1h → short-term fluctuations
 
 6h → convective buildup
@@ -97,12 +100,12 @@ class MultiScaleAttention(nn.Module):
 Gated fusion: adaptively blends multi-scale features
 
 Loss Function
-python
-Copy code
+
 weights = torch.ones_like(targets)
 weights[targets > quantile_90] = 5.0
 loss = F.mse_loss(preds, targets, reduction='none') * weights
 loss = loss.mean()
+
 📈 Why?
 Precipitation is >90% zero — standard MSE ignores heavy events.
 Weighted loss prioritizes high-impact conditions.
@@ -173,21 +176,20 @@ Copy code
 ⚡ Environment Setup
 Option 1 – Local Setup
 bash
-Copy code
 git clone https://github.com/<your-repo>/nowcasting-md.git
 cd nowcasting-md
 pip install -r requirements.txt
 python train.py
+
 Option 2 – Run on Google Colab
 python
-Copy code
 !git clone https://github.com/<your-repo>/nowcasting-md.git
 %cd nowcasting-md
 !pip install -r requirements.txt
 !python evaluate.py
+
 🧾 requirements.txt
 text
-Copy code
 torch>=2.3.0
 numpy>=1.26.0
 pandas>=2.2.0
@@ -198,6 +200,7 @@ openmeteo-requests>=0.2.1
 requests>=2.32.0
 fastapi>=0.111.0
 uvicorn>=0.30.0
+
 🧑‍💻 Contributors
 Group 12 — Deep Learning (Fall 2025)
 
