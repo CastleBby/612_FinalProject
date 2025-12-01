@@ -1,93 +1,209 @@
 # Precipitation Nowcasting (CMSC 612 Final Project)
 
-This repository reproduces the end-to-end workflow for the 612 Final Project: fetching historical weather observations for several Maryland locations, training a transformer-based precipitation nowcasting model, and generating evaluation plots and metrics.
+# 🌧️ 1-Hour Precipitation Nowcasting in Maryland
+### A Domain-Aware Transformer with Multi-Scale Attention  
+**Group 12 — Deep Learning (Prof. Samet Ayhan, Fall 2025)**  
 
-## 1. Environment Setup
+[![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/)
+[![PyTorch](https://img.shields.io/badge/PyTorch-2.3%2B-orange.svg)](https://pytorch.org/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![Dataset](https://img.shields.io/badge/Dataset-OpenMeteo-blue)](https://open-meteo.com/)
+[![Status](https://img.shields.io/badge/Stage-Interim%20Report-yellow.svg)]()
 
-1. Install [Miniconda](https://docs.conda.io/en/latest/miniconda.html) or Anaconda if you do not already have it.
-2. Create and activate the project environment:
-   ```bash
-   conda create -n 612proj python=3.10 -y
-   conda activate 612proj
-   ```
-3. Install the required Python packages:
-   ```bash
-   # Core dependencies
-   conda install -y numpy pandas scikit-learn requests pyyaml tqdm matplotlib
+---
 
-   # PyTorch CPU build (install with pip to avoid libittnotify issues on non-Intel systems)
-   pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu torch==2.5.1
-   ```
+## 📘 Project Overview
+Flash floods in Maryland are triggered by rapidly evolving, localized precipitation.  
+Traditional **Numerical Weather Prediction (NWP)** systems underperform for 1-hour horizons due to:
+- Coarse spatial resolution (>10 km)  
+- Sensitivity to initial conditions  
+- Weak handling of short-term, high-impact phenomena  
 
-The environment now contains all libraries used by the data preparation, training, and analysis scripts.
+This project proposes a **Domain-Aware Transformer** architecture for **1-hour nowcasting**, using **24-hour input sequences** with meteorological embeddings and multi-scale attention.
 
-## 2. Data Preparation
+### 🔬 Objectives
+| Innovation | Description |
+|-------------|-------------|
+| 🌦️ Weather-specific embeddings | Captures physical variable semantics |
+| ⏱️ Multi-scale temporal attention | Models dependencies at 1h, 6h, 24h |
+| ⚖️ Precipitation-weighted loss | Emphasizes rare, high-rainfall events |
 
-The project does not ship with raw data. Fetch and preprocess the required hourly weather history (2010–2020) from the Open-Meteo archive:
+---
 
-```bash
-python data_loader.py
-```
+## 🧩 Dataset and Preprocessing
 
-This script:
+### Data Source
+- **Provider:** [Open-Meteo Historical API](https://open-meteo.com)
+- **Years:** 2010–2020 (11 years)
+- **Frequency:** Hourly
+- **Stations:** Baltimore, Annapolis, Cumberland, Ocean City, Hagerstown  
 
-- Downloads the configured variables for five Maryland stations (see `config.yaml`).
-- Cleans and interpolates small gaps in the time series.
-- Scales features with a shared `MinMaxScaler`.
-- Splits the sequences into train/validation/test partitions.
-- Saves the artifacts to:
-  - `md_weather_data.csv` — concatenated raw hourly observations.
-  - `processed_data.npz` — tensors, location indices, and the fitted scaler serialized with NumPy.
+**Variables:** Temperature (°C), Relative humidity (%), Precipitation (mm/h), Surface pressure (hPa), Wind speed (m/s)
 
-Expect the download and preprocessing step to take a couple of minutes on a typical connection.
+| Stage | Count |
+|--------|-------|
+| Raw records | 482,160 |
+| After interpolation | 482,160 (0 % missing) |
+| Sequences (24h→1h) | 482,136 |
+| Train / Val / Test | 70 / 15 / 15 → 337,494 / 72,321 / 72,321 |
 
-## 3. Model Training
+### Preprocessing Steps
 
-Launch training after the processed dataset exists:
+# 1. Fetch data
+df = fetch_openmeteo_data(lat, lon, '2010-01-01', '2020-12-31', variables)
 
-```bash
+# 2. Handle missing values
+df = df.interpolate(method='linear').dropna()
+
+# 3. Global scaling
+scaler = MinMaxScaler()
+data_scaled = scaler.fit_transform(df[variables])
+
+# 4. Sequence construction
+for i in range(len(data_scaled) - 24):
+    X.append(data_scaled[i:i+24])        # Input sequence
+    y.append(data_scaled[i+24, precip])  # Target
+Rationale:
+
+Global scaling maintains consistent feature ranges
+
+No shuffling preserves temporal order
+
+Location encoded as a learnable embedding
+
+🧠 Model Architecture
+Design Summary
+Goal	Implementation
+Capture variable semantics	Separate embedding paths
+Model multi-scale behavior	Parallel attention heads (1h, 6h, 24h)
+Prioritize extremes	Weighted MSE loss (↑ for 90th percentile)
+
+Multi-Scale Attention Module
+python
+Copy code
+class MultiScaleAttention(nn.Module):
+    def forward(self, x):
+        a1 = attn1h(x, x, x)
+        a6 = interpolate(attn6h(x[::6]), size=24)
+        a24 = interpolate(attn24h(x[::24]), size=24)
+        cat = torch.cat([a1, a6, a24], dim=-1)
+        return out(cat) * torch.sigmoid(gate(cat)) + x
+1h → short-term fluctuations
+
+6h → convective buildup
+
+24h → diurnal cycle
+
+Gated fusion: adaptively blends multi-scale features
+
+Loss Function
+python
+Copy code
+weights = torch.ones_like(targets)
+weights[targets > quantile_90] = 5.0
+loss = F.mse_loss(preds, targets, reduction='none') * weights
+loss = loss.mean()
+📈 Why?
+Precipitation is >90% zero — standard MSE ignores heavy events.
+Weighted loss prioritizes high-impact conditions.
+
+⚙️ Training Pipeline
+Step	Script	Description
+1	data_loader.py	Fetch + preprocess
+2	transformer_model.py	Define Transformer
+3	train.py	Train model (AdamW, LR=1e-4, early stop)
+4	evaluate.py	Evaluate RMSE, CSI, POD, FAR
+5	—	Save best_model.pth
+
+📈 Results (Test Set)
+Metric	Ours	Persistence
+RMSE	0.3798	0.4132
+MAE	0.1398	0.0845
+CSI	0.5857	0.6181
+POD	0.7102	0.7640
+FAR	0.2304	0.2361
+Extreme POD	0.7363	0.7453
+
+Baseline = Last-observed persistence model.
+
+🖼️ Visualization Suite (analysis_suite.py)
+Figure	Purpose
+1	Heaviest flash flood event
+2	Predicted vs True scatter
+3	Error distribution
+4	Error vs Intensity
+5	Top 5 extreme events
+6	Learning rate convergence
+7	Multi-scale attention heatmap
+
+📅 Project Status
+Component	Status	File
+Data pipeline	✅ Complete	data_loader.py
+Model architecture	✅ Complete	transformer_model.py
+Training & evaluation	✅ Complete	evaluate.py
+Visualization suite	✅ 7 figures generated	analysis_suite.py
+Best model	✅ Saved	best_model.pth
+
+🚀 Future Work
+Week	Task
+8	Add quantile loss for uncertainty estimation
+9	Integrate radar reflectivity via cross-attention
+10	Build real-time FastAPI endpoint
+11	Conduct ablation study
+12	Final report & demo
+
+📚 References
+Zeng, A. et al. (2022). Are Transformers Effective for Time Series Forecasting? arXiv:2205.13504.
+
+Chamatidis, I. et al. (2023). Short-term forecasting of rainfall using deep LSTM networks. Atmosphere.
+
+Open-Meteo API
+
+🗂️ Repository Structure
+bash
+Copy code
+├── data_loader.py           # Data collection & preprocessing
+├── transformer_model.py     # Domain-aware Transformer
+├── train.py                 # Model training loop
+├── evaluate.py              # Evaluation metrics & logging
+├── analysis_suite.py        # Visualization utilities
+├── best_model.pth           # Trained model weights
+├── requirements.txt         # Environment dependencies
+└── README.md                # Project documentation
+⚡ Environment Setup
+Option 1 – Local Setup
+bash
+Copy code
+git clone https://github.com/<your-repo>/nowcasting-md.git
+cd nowcasting-md
+pip install -r requirements.txt
 python train.py
-```
+Option 2 – Run on Google Colab
+python
+Copy code
+!git clone https://github.com/<your-repo>/nowcasting-md.git
+%cd nowcasting-md
+!pip install -r requirements.txt
+!python evaluate.py
+🧾 requirements.txt
+text
+Copy code
+torch>=2.3.0
+numpy>=1.26.0
+pandas>=2.2.0
+scikit-learn>=1.5.0
+matplotlib>=3.9.0
+tqdm>=4.66.0
+openmeteo-requests>=0.2.1
+requests>=2.32.0
+fastapi>=0.111.0
+uvicorn>=0.30.0
+🧑‍💻 Contributors
+Group 12 — Deep Learning (Fall 2025)
 
-Key details:
+Instructor: Prof. Samet Ayhan, University of Maryland
 
-- The transformer architecture is defined in `transformer_model.py`.
-- Device selection is automatic (CUDA → MPS → CPU). On CPU the full 50-epoch run takes roughly 45–60 minutes; GPU runtimes are significantly shorter.
-- The best validation checkpoint is saved to `best_model.pth`, and loss statistics are printed each epoch.
-- The weighted MSE loss emphasizes heavy-rain cases via the configuration parameters in `config.yaml`.
-
-If you need a quicker sanity check, temporarily lower `model.epochs` in the config before launching the script.
-
-## 4. Evaluation
-
-Use the held-out test split to benchmark the trained model and compare it with a persistence baseline:
-
-```bash
-python evaluate.py
-```
-
-The script loads `best_model.pth`, restores the scaler, and reports RMSE, MAE, rain-event CSI metrics, and extreme-event POD. It also prints the same metrics for a persistence forecast (last observed value).
-
-## 5. Visualizations and Analysis
-
-- `analysis_suite.py` reproduces the publication figures (scatter plots, residual histograms, learning-rate ablations, attention maps, etc.) and saves them alongside the script (`fig1_*.png`, ..., `fig7_*.png`).
-- `visualize.py` generates an interactive Matplotlib figure for the heaviest test-set event with past 24-hour context and the one-hour forecast.
-
-Both scripts assume `processed_data.npz` and `best_model.pth` already exist.
-
-## 6. Configuration
-
-All tunable parameters live in `config.yaml`. Important sections:
-
-- `data`: station coordinates, variables, sequence length, prediction horizon, and split ratios.
-- `model`: transformer width/depth, learning rate, batch size, epochs, and feature-group definitions (used for domain-aware embeddings).
-- `eval`: thresholds for rain and extreme-event detection.
-
-Modify the configuration to experiment with different locations, variables, or training schedules. Rerun `data_loader.py` whenever the data block changes to regenerate aligned tensors and scaler state.
-
-## 7. Troubleshooting
-
-- **Conda environment permissions**: If you encounter “No writable envs directories configured,” ensure your Conda install has write access to its `envs/` directory, or export `CONDA_ENVS_PATH` and `CONDA_PKGS_DIRS` that point to writable locations before creating the environment.
+locations before creating the environment.
 - **PyTorch `iJIT_NotifyEvent` errors**: Prefer the official CPU wheel (`pip install ... torch==2.5.1`) instead of the Conda package to avoid missing Intel ITT instrumentation libraries on non-Intel hardware.
 - **API limits**: The Open-Meteo archive is free but rate-limited. Re-running `data_loader.py` in quick succession may trigger temporary HTTP errors; retry after a short pause if that happens.
 
