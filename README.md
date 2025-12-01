@@ -47,113 +47,116 @@ This project proposes a **Domain-Aware Transformer** architecture for **1-hour n
 | Sequences (24h→1h) | 482,136 |
 | Train / Val / Test | 70 / 15 / 15 → 337,494 / 72,321 / 72,321 |
 
-### Preprocessing Steps
+### Preprocessing Pipeline (Fully Implemented)
 
-# 1. Fetch data
+```python
+# 1. Fetch data per station via API
 df = fetch_openmeteo_data(lat, lon, '2010-01-01', '2020-12-31', variables)
 
-# 2. Handle missing values
+# 2. Handle missing values (linear interpolation)
 df = df.interpolate(method='linear').dropna()
 
-# 3. Global scaling
+# 3. Global MinMax scaling (consistent across all stations)
 scaler = MinMaxScaler()
 data_scaled = scaler.fit_transform(df[variables])
 
-# 4. Sequence construction
+# 4. Create 24h → 1h sequences
+X, y = [], []
 for i in range(len(data_scaled) - 24):
-    X.append(data_scaled[i:i+24])        # Input sequence
-    y.append(data_scaled[i+24, precip])  # Target
+    X.append(data_scaled[i:i+24])           # Input: (24, 5)
+    y.append(data_scaled[i+24, precip_idx]) # Target: scalar
+```
+Rationale
 
-Rationale:
+Global scaling → consistent feature ranges across all 5 stations
+No shuffling → preserves temporal order (critical for time-series)
+Location ID → added as learnable embedding (not one-hot)
 
-Global scaling maintains consistent feature ranges
+All 482,136 sequences saved in processed_data.npz — ready for training in seconds.
 
-No shuffling preserves temporal order
-
-Location encoded as a learnable embedding
-
-🧠 Model Architecture
-Design Summary
-Goal	Implementation
-Capture variable semantics	Separate embedding paths
-Model multi-scale behavior	Parallel attention heads (1h, 6h, 24h)
-Prioritize extremes	Weighted MSE loss (↑ for 90th percentile)
+🧠 Model Architecture — Design Summary
+Goal,Implementation
+Capture variable semantics,Separate embedding paths (thermo/hydro/dynamic)
+Multi-scale temporal behavior,"Parallel attention heads (1h, 6h, 24h)"
+Prioritize extreme rain,Weighted MSE loss (5× for >90th percentile)
 
 Multi-Scale Attention Module
-
-
+```python
 class MultiScaleAttention(nn.Module):
     def forward(self, x):
-        a1 = attn1h(x, x, x)
-        a6 = interpolate(attn6h(x[::6]), size=24)
-        a24 = interpolate(attn24h(x[::24]), size=24)
+        a1  = attn1h(x, x, x)                    # 1h resolution
+        a6  = interpolate(attn6h(x[::6]), size=24)  # 6h → upsample
+        a24 = interpolate(attn24h(x[::24]), size=24) # 24h → upsample
         cat = torch.cat([a1, a6, a24], dim=-1)
-        return out(cat) * torch.sigmoid(gate(cat)) + x
+        return out(cat) * torch.sigmoid(gate(cat)) + x  # Gated residual
+```
 
+Scale Interpretations
 
-1h → short-term fluctuations
-
-6h → convective buildup
-
-24h → diurnal cycle
-
-Gated fusion: adaptively blends multi-scale features
+1h head → short-term fluctuations
+6h head → convective buildup
+24h head → diurnal cycle
+Gated fusion → adaptively blends multi-scale features
 
 Loss Function
-
+```python
 weights = torch.ones_like(targets)
 weights[targets > quantile_90] = 5.0
 loss = F.mse_loss(preds, targets, reduction='none') * weights
 loss = loss.mean()
-
+```
 📈 Why?
 Precipitation is >90% zero — standard MSE ignores heavy events.
 Weighted loss prioritizes high-impact conditions.
 
 ⚙️ Training Pipeline
-Step	Script	Description
-1	data_loader.py	Fetch + preprocess
-2	transformer_model.py	Define Transformer
-3	train.py	Train model (AdamW, LR=1e-4, early stop)
-4	evaluate.py	Evaluate RMSE, CSI, POD, FAR
-5	—	Save best_model.pth
+
+Step,Script,Description
+1,data_loader.py,Fetch + preprocess → processed_data.npz
+2,transformer_model.py,Full domain-aware model
+3,train.py,"AdamW, early stopping, weighted loss"
+4,evaluate.py,"RMSE, CSI, POD, FAR + persistence"
+5,analysis_suite.py,7 publication figures
+
 
 📈 Results (Test Set)
-Metric	Ours	Persistence
-RMSE	0.3798	0.4132
-MAE	0.1398	0.0845
-CSI	0.5857	0.6181
-POD	0.7102	0.7640
-FAR	0.2304	0.2361
-Extreme POD	0.7363	0.7453
+Metric,Our Model,Persistence
+RMSE,0.3798,0.4132
+MAE,0.1398,0.0845
+CSI,0.5857,0.6181
+POD,0.7102,0.7640
+FAR,0.2304,0.2361
+Extreme POD,0.7363,0.7453
 
 Baseline = Last-observed persistence model.
 
 🖼️ Visualization Suite (analysis_suite.py)
-Figure	Purpose
-1	Heaviest flash flood event
-2	Predicted vs True scatter
-3	Error distribution
-4	Error vs Intensity
-5	Top 5 extreme events
-6	Learning rate convergence
-7	Multi-scale attention heatmap
+Figure,Purpose,File
+1,Heaviest flash flood event,fig1_flash_flood.png
+2,Predicted vs True scatter,fig2_scatter.png
+3,Error distribution,fig3_error_dist.png
+4,Error vs Intensity,fig4_error_vs_intensity.png
+5,Top 5 extreme events,fig5_top5_events.png
+6,Learning rate convergence,fig6_lr_curves.png
+7,Multi-scale attention heatmap,fig7_attention_heatmap.png
 
 📅 Project Status
-Component	Status	File
-Data pipeline	✅ Complete	data_loader.py
-Model architecture	✅ Complete	transformer_model.py
-Training & evaluation	✅ Complete	evaluate.py
-Visualization suite	✅ 7 figures generated	analysis_suite.py
-Best model	✅ Saved	best_model.pth
+
+Component,Status,File
+Data pipeline,✅ Complete,data_loader.py
+Model architecture,✅ Complete,transformer_model.py
+Training & evaluation,✅ Complete,evaluate.py
+Visualization suite,✅ 7 figures generated,analysis_suite.py
+Best model,✅ Saved,best_model.pth
 
 🚀 Future Work
 Week	Task
-8	Add quantile loss for uncertainty estimation
-9	Integrate radar reflectivity via cross-attention
-10	Build real-time FastAPI endpoint
-11	Conduct ablation study
-12	Final report & demo
+Week,Task,Status
+8,Add quantile loss for uncertainty estimation,In Progress
+9,Integrate radar reflectivity via cross-attention,In Progress
+10,Build real-time FastAPI endpoint,In Progress
+11,Conduct ablation study,In Progress
+12,Final report & demo,In Progress
 
 📚 References
 Zeng, A. et al. (2022). Are Transformers Effective for Time Series Forecasting? arXiv:2205.13504.
@@ -163,33 +166,35 @@ Chamatidis, I. et al. (2023). Short-term forecasting of rainfall using deep LSTM
 Open-Meteo API
 
 🗂️ Repository Structure
-bash
-Copy code
-├── data_loader.py           # Data collection & preprocessing
-├── transformer_model.py     # Domain-aware Transformer
-├── train.py                 # Model training loop
-├── evaluate.py              # Evaluation metrics & logging
-├── analysis_suite.py        # Visualization utilities
-├── best_model.pth           # Trained model weights
-├── requirements.txt         # Environment dependencies
-└── README.md                # Project documentation
+
+```bash
+├── data_loader.py     # Data collection & preprocessing
+├── transformer_model.py # Domain-aware Transformer
+├── train.py          # Model training loop
+├── evaluate.py       # Evaluation metrics & logging
+├── analysis_suite.py # Visualization utilities
+├── best_model.pth    # Trained model weights
+├── requirements.txt  # Environment dependencies
+└── README.md         # Project documentation
+```
 ⚡ Environment Setup
 Option 1 – Local Setup
-bash
-git clone https://github.com/<your-repo>/nowcasting-md.git
-cd nowcasting-md
+```bash
+git clone https://github.com/CastleBby/612_FinalProject.git
+cd 612_FinalProject
 pip install -r requirements.txt
 python train.py
-
+```
 Option 2 – Run on Google Colab
-python
-!git clone https://github.com/<your-repo>/nowcasting-md.git
-%cd nowcasting-md
+```python
+!git clone https://github.com/CastleBby/612_FinalProject.git
+%cd 612_FinalProject
 !pip install -r requirements.txt
 !python evaluate.py
+```
 
 🧾 requirements.txt
-text
+```text
 torch>=2.3.0
 numpy>=1.26.0
 pandas>=2.2.0
@@ -200,7 +205,7 @@ openmeteo-requests>=0.2.1
 requests>=2.32.0
 fastapi>=0.111.0
 uvicorn>=0.30.0
-
+```
 🧑‍💻 Contributors
 Group 12 — Deep Learning (Fall 2025)
 
