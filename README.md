@@ -168,11 +168,16 @@ Weighted loss prioritizes high-impact conditions.
 
 
 📚 References
-Zeng, A. et al. (2022). Are Transformers Effective for Time Series Forecasting? arXiv:2205.13504.
 
-Chamatidis, I. et al. (2023). Short-term forecasting of rainfall using deep LSTM networks. Atmosphere.
-
-Open-Meteo API
+- Zeng, A. et al. (2022). *Are Transformers Effective for Time Series Forecasting?* arXiv:2205.13504.
+- Vaswani, A. et al. (2017). *Attention Is All You Need.* NeurIPS 2017.
+- Chamatidis, I. et al. (2023). *Short-term forecasting of rainfall using deep LSTM networks.* Atmosphere.
+- Shi, X. et al. (2015). *Convolutional LSTM Network: A Machine Learning Approach for Precipitation Nowcasting.* NeurIPS 2015.
+- Ravuri, S. et al. (2021). *Skilful Precipitation Nowcasting using Deep Generative Models of Radar.* Nature, 597(7878), 672–677.
+- Ayzel, G. et al. (2020). *RainNet: A convolutional neural network for precipitation nowcasting using radar data.* Journal of Hydrology.
+- Open-Meteo Historical Weather API. https://open-meteo.com
+- Sønderby, C. K. et al. (2020). *MetNet: A Neural Weather Model for Precipitation Forecasting.* Google Research.
+- Bi, K. et al. (2023). *Accurate Medium-Range Global Weather Forecasting with 3D Neural Networks.* Nature, 619(7970), 533–538.
 
 🗂️ Repository Structure
 
