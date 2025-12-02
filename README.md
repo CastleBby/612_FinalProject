@@ -229,4 +229,4 @@ locations before creating the environment.
 - **PyTorch `iJIT_NotifyEvent` errors**: Prefer the official CPU wheel (`pip install ... torch==2.5.1`) instead of the Conda package to avoid missing Intel ITT instrumentation libraries on non-Intel hardware.
 - **API limits**: The Open-Meteo archive is free but rate-limited. Re-running `data_loader.py` in quick succession may trigger temporary HTTP errors; retry after a short pause if that happens.
 
-With these steps, you can fully reproduce the dataset preparation, transformer training, and evaluation workflow for the CMSC 612 final project.
+With these steps, you can fully reproduce the dataset preparation, transformer training, and evaluation workflow for the DATA612 final project.
