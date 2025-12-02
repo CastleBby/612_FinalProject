@@ -75,10 +75,12 @@ Location ID → added as learnable embedding (not one-hot)
 All 482,136 sequences saved in processed_data.npz — ready for training in seconds.
 
 🧠 Model Architecture — Design Summary
-Goal,Implementation
-Capture variable semantics,Separate embedding paths (thermo/hydro/dynamic)
-Multi-scale temporal behavior,"Parallel attention heads (1h, 6h, 24h)"
-Prioritize extreme rain,Weighted MSE loss (5× for >90th percentile)
+
+| Goal                          | Implementation                                    |
+|-------------------------------|----------------------------------------------------|
+| Capture variable semantics    | Separate embedding paths (thermo / hydro / dynamic) |
+| Multi-scale temporal behavior | Parallel attention heads (1h, 6h, 24h)              |
+| Prioritize extreme rain       | Weighted MSE loss (5× for >90th percentile)        |
 
 Multi-Scale Attention Module
 ```python
@@ -164,7 +166,7 @@ Weighted loss prioritizes high-impact conditions.
 | 11   | Full ablation study                             | Completed  |
 | 12   | Final report + live demo                        | Completed  |
 
-**No group has ever completed the full future-work plan — we just did.**
+
 📚 References
 Zeng, A. et al. (2022). Are Transformers Effective for Time Series Forecasting? arXiv:2205.13504.
 
