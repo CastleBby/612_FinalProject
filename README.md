@@ -1,4 +1,4 @@
-# Precipitation Nowcasting (CMSC 612 Final Project)
+# Precipitation Nowcasting (DATA612 Final Project)
 
 # 🌧️ 1-Hour Precipitation Nowcasting in Maryland
 ### A Domain-Aware Transformer with Multi-Scale Attention  
