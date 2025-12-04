@@ -18,7 +18,7 @@ data:
     - name: 'Hagerstown'
       lat: 39.64
       lon: -77.72
-  variables: ['temperature_2m', 'relative_humidity_2m', 'precipitation', 'pressure_msl', 'wind_speed_10m']
+  variables: ['temperature_2m', 'relative_humidity_2m', 'precipitation', 'pressure_msl', 'wind_speed_10m', 'cloudcover', 'dewpoint_2m', 'winddirection_10m']
   seq_len: 24  # Input sequence length (hours)
   pred_horizon: 1  # Predict next 1 hour
   test_split: 0.15  # For eval; adjust for full data
@@ -37,12 +37,13 @@ model:
   gradient_clip: 1.0  # Gradient clipping for stability
   weight_decay: 0.01  # L2 regularization
   warmup_epochs: 10  # Learning rate warmup
-  feature_groups:  # For domain-aware embeddings (total: 11 features = 5 weather + 6 temporal)
-    thermo: [0, 1]          # temperature_2m, relative_humidity_2m
+  feature_groups:  # For domain-aware embeddings (total: 14 features = 8 weather + 6 temporal)
+    thermo: [0, 1, 6]       # temperature_2m, relative_humidity_2m, dewpoint_2m
     hydro: [2, 3]           # precipitation, pressure_msl
-    dynamic: [4]            # wind_speed_10m
-    temporal_diurnal: [5, 6]  # hour_sin, hour_cos (daily cycle)
-    temporal_seasonal: [7, 8, 9, 10]  # day_sin, day_cos, month_sin, month_cos (seasonal patterns)
+    dynamic: [4, 7]         # wind_speed_10m, winddirection_10m
+    optical: [5]            # cloudcover
+    temporal_diurnal: [8, 9]   # hour_sin, hour_cos (daily cycle)
+    temporal_seasonal: [10, 11, 12, 13]  # day_sin, day_cos, month_sin, month_cos (seasonal patterns)
   extreme_weight: 10.0  # Increased weight for heavy rain events
 
 eval:
