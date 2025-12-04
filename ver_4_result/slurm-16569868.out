@@ -1,0 +1,118 @@
+Wed Dec  3 22:06:01 2025       
++-----------------------------------------------------------------------------------------+
+| NVIDIA-SMI 575.57.08              Driver Version: 575.57.08      CUDA Version: 12.9     |
+|-----------------------------------------+------------------------+----------------------+
+| GPU  Name                 Persistence-M | Bus-Id          Disp.A | Volatile Uncorr. ECC |
+| Fan  Temp   Perf          Pwr:Usage/Cap |           Memory-Usage | GPU-Util  Compute M. |
+|                                         |                        |               MIG M. |
+|=========================================+========================+======================|
+|   0  Tesla V100-SXM2-32GB           Off |   00000000:1A:00.0 Off |                    0 |
+| N/A   33C    P0             41W /  300W |       0MiB /  32768MiB |      0%      Default |
+|                                         |                        |                  N/A |
++-----------------------------------------+------------------------+----------------------+
+|   1  Tesla V100-SXM2-32GB           Off |   00000000:1C:00.0 Off |                    0 |
+| N/A   29C    P0             41W /  300W |       0MiB /  32768MiB |      0%      Default |
+|                                         |                        |                  N/A |
++-----------------------------------------+------------------------+----------------------+
+                                                                                         
++-----------------------------------------------------------------------------------------+
+| Processes:                                                                              |
+|  GPU   GI   CI              PID   Type   Process name                        GPU Memory |
+|        ID   ID                                                               Usage      |
+|=========================================================================================|
+|  No running processes found                                                             |
++-----------------------------------------------------------------------------------------+
+CUDA available: True
+Device: Tesla V100-SXM2-32GB
+processed_data.npz not found - running data_loader.py
+Random seed set to: 202511 for reproducibility
+================================================================================
+Data Loading with Reproducibility
+================================================================================
+Found existing md_weather_data.csv - Loading from file...
+Loaded 1095840 rows from cached file
+Split into 5 location dataframes
+
+=== Data Quality Report ===
+temperature_2m            - Mean:    13.32, Std:     9.84, Min:   -24.00, Max:    40.30
+relative_humidity_2m      - Mean:    70.51, Std:    18.53, Min:    11.00, Max:   100.00
+precipitation             - Mean:     0.13, Std:     0.58, Min:     0.00, Max:    53.50
+pressure_msl              - Mean:  1017.52, Std:     7.32, Min:   963.60, Max:  1048.40
+wind_speed_10m            - Mean:    11.64, Std:     6.50, Min:     0.00, Max:    64.00
+Precipitation > 0.1mm:    124499 hours (11.4%)
+Extreme events (>90th):   101649 hours
+
+=== Building sequences with temporal features ===
+Scaler fitted on 1,095,840 total samples
+Total sequences: 1,095,720
+Input shape: (1095720, 24, 11) (includes 6 temporal features)
+
+Data split using random_state=202511 for reproducibility
+Sequences ready -> Train=767004 | Val=164358 | Test=164358
+Starting training...
+================================================================================
+Multi-Task Transformer Training (Optimized)
+================================================================================
+Random seed set to: 202511 for reproducibility
+✓ cuDNN benchmarking enabled
+Using device: cuda
+Binary labels created with threshold: 0.1 mm
+Training set: 11.6% positive (rain)
+Validation set: 10.8% positive (rain)
+✓ DataLoader: 4 workers, pin_memory=True
+
+Multi-Task Model: 20.81M parameters
+/scratch/zt1/project/msml612-fa25/user/shhuang/weather_forecast_transformer_based_model/train_multitask.py:186: FutureWarning: `torch.cuda.amp.GradScaler(args...)` is deprecated. Please use `torch.amp.GradScaler('cuda', args...)` instead.
+  scaler_amp = GradScaler() if use_amp else None
+Starting training from scratch...
+
+================================================================================
+Multi-Task Training Configuration (V4 - Enhanced Classification):
+================================================================================
+Loss Weights:
+  Regression weight:        0.7 (maintain RMSE)
+  Classification weight:    0.3 (improve CSI/POD/FAR)
+
+Regression Settings:
+  Extreme weight:           10.0
+
+Classification Settings:
+  Loss type:                Focal Loss
+  Focal alpha (rain class): 0.35
+  Focal gamma:              2.0
+  Hard example weight:      0.5
+
+Gradient & Regularization:
+  Gradient clip:            1.0
+  Weight decay:             0.015
+  Dropout:                  0.2
+================================================================================
+
+
+Epoch 1/120:   0%|          | 0/5993 [00:00<?, ?it/s]/scratch/zt1/project/msml612-fa25/user/shhuang/weather_forecast_transformer_based_model/train_multitask.py:262: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  with autocast():
+
+Epoch 1/120:   0%|          | 1/5993 [00:04<8:15:56,  4.97s/it]
+Epoch 75/120: 100%|██████████| 5993/5993 [02:46<00:00, 36.03it/s]
+Epoch  75 | Train: Reg=0.000426 Class=0.062281 Total=0.018983 | Val: Reg=0.000433 Class=0.058786 Total=0.017939 | LR=0.000030
+
+Early stopping triggered after 75 epochs (patience=20)
+
+Training complete!
+Best validation loss: 0.017916
+[W1204 02:00:26.660763675 AllocatorConfig.cpp:28] Warning: PYTORCH_CUDA_ALLOC_CONF is deprecated, use PYTORCH_ALLOC_CONF instead (function operator())
+Starting evaluation...
+Using device: cuda
+Loaded model from epoch 55
+Running inference on test set...
+
+======================================================================
+Optimizing classification threshold for best CSI...
+======================================================================
+Traceback (most recent call last):
+  File "/scratch/zt1/project/msml612-fa25/user/shhuang/weather_forecast_transformer_based_model/evaluate_multitask.py", line 119, in <module>
+    _, _, csi_test = classification_metrics(y_true, y_pred_hybrid_test, rain_threshold)
+                                                                        ^^^^^^^^^^^^^^
+NameError: name 'rain_threshold' is not defined. Did you mean: 'best_threshold'?
+[W1204 02:02:30.176288505 AllocatorConfig.cpp:28] Warning: PYTORCH_CUDA_ALLOC_CONF is deprecated, use PYTORCH_ALLOC_CONF instead (function operator())
+srun: error: gpu-a5-1: task 0: Exited with exit code 1

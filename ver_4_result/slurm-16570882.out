@@ -1,0 +1,121 @@
+================================================================================
+Precipitation Forecasting - V4 Enhanced Classification
+================================================================================
+Execution mode:
+  🎯 EVALUATION ONLY (requires trained model)
+================================================================================
+
+Thu Dec  4 02:42:10 2025       
++-----------------------------------------------------------------------------------------+
+| NVIDIA-SMI 575.57.08              Driver Version: 575.57.08      CUDA Version: 12.9     |
+|-----------------------------------------+------------------------+----------------------+
+| GPU  Name                 Persistence-M | Bus-Id          Disp.A | Volatile Uncorr. ECC |
+| Fan  Temp   Perf          Pwr:Usage/Cap |           Memory-Usage | GPU-Util  Compute M. |
+|                                         |                        |               MIG M. |
+|=========================================+========================+======================|
+|   0  Tesla V100-SXM2-32GB           Off |   00000000:1A:00.0 Off |                    0 |
+| N/A   33C    P0             41W /  300W |       0MiB /  32768MiB |      0%      Default |
+|                                         |                        |                  N/A |
++-----------------------------------------+------------------------+----------------------+
+|   1  Tesla V100-SXM2-32GB           Off |   00000000:1C:00.0 Off |                    0 |
+| N/A   29C    P0             41W /  300W |       0MiB /  32768MiB |      0%      Default |
+|                                         |                        |                  N/A |
++-----------------------------------------+------------------------+----------------------+
+                                                                                         
++-----------------------------------------------------------------------------------------+
+| Processes:                                                                              |
+|  GPU   GI   CI              PID   Type   Process name                        GPU Memory |
+|        ID   ID                                                               Usage      |
+|=========================================================================================|
+|  No running processes found                                                             |
++-----------------------------------------------------------------------------------------+
+CUDA available: True
+Device: Tesla V100-SXM2-32GB
+⚠️  Skipping data loading (--skip-data or --eval-only)
+
+⚠️  Skipping training (--skip-training or --eval-only)
+
+🎯 Starting evaluation...
+================================================================================
+Using device: cuda
+Loaded model from epoch 55
+Model checkpoint: best_multitask_model.pth
+Running inference on test set...
+
+======================================================================
+Optimizing classification threshold for best CSI...
+======================================================================
+Optimal threshold: 0.270 (CSI: 0.6191)
+
+Using optimized classification threshold: 0.270
+Predicted rain 11.5% of the time
+Actual rain 10.7% of the time
+
+======================================================================
+=== MULTI-TASK TRANSFORMER RESULTS (V4 - Enhanced Classification) ===
+======================================================================
+
+--- Regression Metrics (Precipitation Amount) ---
+RMSE : 0.3689 mm/h
+MAE  : 0.0882 mm/h
+
+--- Classification Metrics (Rain Detection @ 0.1mm threshold) ---
+CSI (Critical Success Index): 0.6191
+POD (Probability of Detection): 0.7948
+FAR (False Alarm Ratio):     0.2632
+
+Confusion Matrix:
+  True Positives (TP):   13958 (correctly predicted rain)
+  False Positives (FP):   4985 (false alarms)
+  False Negatives (FN):   3603 (missed rain events)
+  True Negatives (TN):  141812 (correctly predicted no rain)
+
+Additional Metrics:
+  Accuracy:  0.9477
+  Precision: 0.7368 (1 - FAR = 0.7368)
+  Recall:    0.7948 (same as POD)
+  F1-Score:  0.7647
+
+--- Extreme Event Detection (90th percentile) ---
+Extreme POD: 0.8459
+
+======================================================================
+=== PERSISTENCE BASELINE ===
+======================================================================
+RMSE : 0.4009
+MAE  : 0.0820
+CSI  : 0.6145 | POD: 0.7612 | FAR: 0.2388
+Extreme POD: 0.7459
+
+======================================================================
+=== IMPROVEMENT OVER BASELINE ===
+======================================================================
+RMSE :   -8.0%
+MAE  :   +7.5%
+CSI  :   +0.7%
+POD  :   +4.4%
+FAR  :  +10.2%
+Extreme POD:  +13.4%
+
+======================================================================
+Predictions saved to: multitask_predictions.npz
+======================================================================
+
+======================================================================
+Generating loss plots...
+======================================================================
+Warning: Training log not found at train_multitask.log
+
+======================================================================
+Evaluation complete!
+======================================================================
+[W1204 02:44:36.449947757 AllocatorConfig.cpp:28] Warning: PYTORCH_CUDA_ALLOC_CONF is deprecated, use PYTORCH_ALLOC_CONF instead (function operator())
+================================================================================
+✓ Evaluation complete!
+
+📊 Generated files:
+  ✓ multitask_predictions.npz
+
+================================================================================
+🎉 Pipeline complete!
+================================================================================

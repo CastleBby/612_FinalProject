@@ -725,7 +725,8 @@ Generated files:
 | **Main Branch** | Transformer + Multi-scale Attn | Parallel temporal scales | **0.6181** | 0.4132 | Baseline ✅ |
 | V2 | + Causal + Temporal conv | Over-engineered | 0.5857 ❌ | 0.3798 | Overfitting |
 | V3 | Encoder-Decoder | Bi-directional encoder | 0.5857 ❌ | ~0.40 | Failed |
-| **V4 (Current)** | **+ Focal Loss + Enhanced Classifier** | **Class imbalance handling** | **TBD** | **TBD** | Testing 🚀 |
+| **V4** | **+ Focal Loss + Enhanced Classifier** | **Class imbalance handling** | **0.6229** ✅ | **0.3679** ✅ | **Completed** |
+| **V5 (Current)** | **V4 + Critical Fixes** | **Fixed causal masking, reduced overfitting** | **TBD** | **TBD** | Testing 🚀 |
 
 ### Performance Comparison with Main Branch
 
@@ -749,8 +750,8 @@ Generated files:
 - Problem: Standard BCE loss couldn't handle 0.0mm vs 0.1mm distinction
 - Root cause: Class imbalance (90% dry / 10% rain) + hard boundary cases
 
-**V4 (Current - Enhanced Classification with Focal Loss)**:
-- **Why it should work better**:
+**V4 (Enhanced Classification with Focal Loss)** - ✅ **COMPLETED**:
+- **Key innovations**:
   1. ✅ **Focal Loss** (α=0.35, γ=2.0): Down-weights easy examples, focuses on hard cases
   2. ✅ **Enhanced Classification Head**: 4-layer with ELU, BatchNorm, residual connections
   3. ✅ **Hard Example Penalty**: Extra loss for wrong predictions near decision boundary
@@ -758,34 +759,121 @@ Generated files:
   5. ✅ **Better Regularization**: Higher dropout, BatchNorm prevents overfitting
   6. ✅ **Gradient Clipping**: Prevents exploding/vanishing gradients (1.0 threshold)
   
+- **Results** (Epoch 43, Best Val Loss: 0.0207):
+  
+  | Metric | V4 Result | Baseline | Improvement | Status |
+  |--------|-----------|----------|-------------|--------|
+  | **RMSE** | **0.3679** | 0.4009 | **-8.2%** ✅ | Better |
+  | **MAE** | 0.0839 | 0.0820 | +2.3% | Slightly worse |
+  | **CSI** | **0.6229** | 0.6145 | **+1.4%** ✅ | Better |
+  | **POD** | 0.7516 | 0.7612 | -1.3% | Slightly worse |
+  | **FAR** | **0.2156** | 0.2388 | **-9.7%** ✅ | Better (fewer false alarms) |
+  | **Extreme POD** | **0.8090** | 0.7459 | **+8.5%** ✅ | Better |
+
+- **Analysis**:
+  - ✅ Beat baseline on RMSE, CSI, FAR, and Extreme POD
+  - ✅ Significant improvement in extreme event detection (+8.5%)
+  - ✅ Reduced false alarms by 9.7% (better precision)
+  - ⚠️ Slight POD decrease suggests room for further optimization
+  - **Overall**: Solid improvement, but identified critical bugs limiting performance
+
+**Training Convergence (V4)**:
+
+![V4 Training History](ver_4_result/training_history.jpg)
+*Figure: V4 training metrics showing smooth convergence of regression and classification losses*
+
+![V4 Loss Convergence](ver_4_result/loss_convergence.jpg)
+*Figure: V4 combined loss convergence with learning rate schedule*
+
+**V5 (Current - Critical Bug Fixes)**:
+- **Problems identified in V4**:
+  1. ❌ **Causal masking in encoder**: Prevented full context (hour 1 couldn't see hour 23!)
+  2. ❌ **Overfitting**: 20.8M params for 767K samples (27 params/sample)
+  3. ❌ **Loss weighting**: 70% RMSE, 30% CSI → didn't optimize CSI enough
+  4. ❌ **Indirect optimization**: Used focal loss proxy instead of direct CSI loss
+
+- **V5 fixes applied**:
+  1. ✅ **Removed causal masking**: Bi-directional attention in encoder
+  2. ✅ **Reduced capacity**: d_model 512→256 (20.8M→5.2M params, 75% reduction)
+  3. ✅ **Increased dropout**: 0.2→0.3 for better regularization
+  4. ✅ **Balanced loss weights**: 50/50 RMSE/CSI (was 70/30)
+  5. ✅ **Direct CSI optimization**: Added differentiable CSI loss function
+  
 - **Expected improvements**:
-  - Better CSI/POD/FAR (handle 0.0mm vs 0.1mm distinction)
-  - Maintain RMSE (70% loss weight still on regression)
-  - Reduced false alarms (focal loss reduces confident wrong predictions)
-  - Better extreme event detection (focal loss focuses on rare events)
+  - Better CSI (+5-7% over baseline, not just +1.4%)
+  - Lower FAR (less overfitting)
+  - Higher POD (better detection)
+  - Maintain or improve RMSE
 
 ### Persistence Baseline (Reference)
 
 | Metric | Value | Description |
 |--------|-------|-------------|
-| **RMSE** | 0.4132 | Predict next hour = current hour |
-| **MAE** | 0.0845 | Simple but surprisingly effective |
-| **CSI** | 0.6181 | Hard to beat for short-term! |
-| **POD** | 0.7640 | Good detection rate |
-| **FAR** | 0.2361 | Reasonable false alarms |
-| **Extreme POD** | 0.7453 | Good for heavy events |
+| **RMSE** | 0.4009 | Predict next hour = current hour |
+| **MAE** | 0.0820 | Simple but surprisingly effective |
+| **CSI** | 0.6145 | Hard to beat for short-term! |
+| **POD** | 0.7612 | Good detection rate |
+| **FAR** | 0.2388 | Reasonable false alarms |
+| **Extreme POD** | 0.7459 | Good for heavy events |
 
-**Goal**: Beat main branch (CSI > 0.6181) AND persistence (CSI > 0.6181)
+**Goal**: Beat persistence baseline by at least 5% on CSI while maintaining or improving RMSE
 
 ### Training Convergence
 
-**Loss plots** (`training_history.jpg`):
+**V4 Loss plots**:
 1. Total loss: Smooth convergence, no overfitting
 2. Regression loss: Decreases steadily
-3. Classification loss: Stabilizes around epoch 50
+3. Classification loss: Stabilizes around epoch 40
 4. Learning rate: Cosine annealing with warmup
 
-**Best model**: Epoch 68, Val Loss = 0.0210
+**Best V4 model**: Epoch 43, Val Loss = 0.0207
+
+See visualization: `ver_4_result/training_history.jpg` and `ver_4_result/loss_convergence.jpg`
+
+### V4 Detailed Results & Performance Analysis
+
+**Training Configuration**:
+- Epochs: 120 (early stopping at epoch 43)
+- Best validation loss: 0.0207
+- Model size: 20.8M parameters
+- Batch size: 128
+- Learning rate: 0.00008 with cosine annealing
+
+**Performance Summary**:
+
+```
+======================================================================
+=== MULTI-TASK TRANSFORMER RESULTS (V4) ===
+======================================================================
+RMSE : 0.3679 mm/h  (Baseline: 0.4009, -8.2% improvement ✅)
+MAE  : 0.0839 mm/h  (Baseline: 0.0820, +2.3% slightly worse)
+CSI  : 0.6229       (Baseline: 0.6145, +1.4% improvement ✅)
+POD  : 0.7516       (Baseline: 0.7612, -1.3% slightly worse)
+FAR  : 0.2156       (Baseline: 0.2388, -9.7% improvement ✅)
+Extreme POD: 0.8090 (Baseline: 0.7459, +8.5% improvement ✅)
+======================================================================
+```
+
+**Key Achievements**:
+- ✅ Beat baseline on 4 out of 6 metrics (RMSE, CSI, FAR, Extreme POD)
+- ✅ Significant improvement in extreme event detection (+8.5%)
+- ✅ Reduced false alarms by 9.7% (better precision)
+- ✅ Better regression performance (RMSE -8.2%)
+
+**Areas for Improvement**:
+- ⚠️ CSI improvement only +1.4% (target was +5%)
+- ⚠️ POD slightly decreased (-1.3%)
+- ⚠️ Identified critical bugs: causal masking, overfitting (20.8M params), loss weighting
+
+**Training Visualizations**:
+
+![V4 Training History](ver_4_result/training_history.jpg)
+
+*Figure 1: V4 training history showing 4-panel view of training/validation losses for regression, classification, and total loss, plus learning rate schedule. Training converged smoothly at epoch 43.*
+
+![V4 Loss Convergence](ver_4_result/loss_convergence.jpg)
+
+*Figure 2: V4 combined loss convergence showing stable training without overfitting. Early stopping triggered at epoch 43 with best validation loss of 0.0207.*
 
 ### Live Demo Features
 
@@ -794,7 +882,7 @@ During presentation, we demonstrate:
 1. **Input**: Show 24-hour weather sequence
 2. **Prediction**: Model outputs amount + rain probability
 3. **Visualization**: 
-   - Loss convergence plots
+   - Loss convergence plots (see V4 results above)
    - Prediction vs actual comparison
    - Attention heatmap (which hours matter most)
 4. **Comparison**: Side-by-side with persistence baseline
