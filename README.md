@@ -38,7 +38,8 @@ This project proposes a **Domain-Aware Transformer** architecture for **1-hour n
 - **Frequency:** Hourly
 - **Stations:** Baltimore, Annapolis, Cumberland, Ocean City, Hagerstown  
 
-**Variables:** Temperature (°C), Relative humidity (%), Precipitation (mm/h), Surface pressure (hPa), Wind speed (m/s)
+**Variables (5):**  
+Temperature (°C) · Relative humidity (%) · Precipitation (mm/h) · Surface pressure (hPa) · Wind speed (m/s)
 
 | Stage | Count |
 |--------|-------|
