@@ -106,9 +106,9 @@ weights[targets > quantile_90] = 5.0
 loss = F.mse_loss(preds, targets, reduction='none') * weights
 loss = loss.mean()
 ```
-📈 Why?
-Precipitation is >90% zero — standard MSE ignores heavy events.
-Weighted loss prioritizes high-impact conditions.
+📈 **Why?**  
+Precipitation is >90% zero — standard MSE ignores heavy events.  
+**Weighted loss prioritizes high-impact flash flood conditions.**
 
 ⚙️ Training Pipeline
 
