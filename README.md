@@ -221,7 +221,7 @@ fastapi>=0.111.0
 uvicorn>=0.30.0
 ```
 🧑‍💻 Contributors
-Group 12 — Deep Learning (Fall 2025)
+Group 12 — **Farhad Abasahl** — [@farhadabasahl](https://github.com/farhadabasahl) - Deep Learning (Fall 2025)
 
 Instructor: Prof. Samet Ayhan, University of Maryland
 
