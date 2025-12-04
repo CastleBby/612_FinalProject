@@ -93,12 +93,12 @@ class MultiScaleAttention(nn.Module):
         return out(cat) * torch.sigmoid(gate(cat)) + x  # Gated residual
 ```
 
-Scale Interpretations
+**Scale Interpretations**
 
-1h head → short-term fluctuations
-6h head → convective buildup
-24h head → diurnal cycle
-Gated fusion → adaptively blends multi-scale features
+- **1h head** → short-term fluctuations  
+- **6h head** → convective buildup  
+- **24h head** → diurnal cycle  
+- **Gated fusion** → adaptively blends multi-scale features
 
 Loss Function
 ```python
