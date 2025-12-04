@@ -66,11 +66,10 @@ for i in range(len(data_scaled) - 24):
     X.append(data_scaled[i:i+24])           # Input: (24, 5)
     y.append(data_scaled[i+24, precip_idx]) # Target: scalar
 ```
-Rationale
-
-Global scaling → consistent feature ranges across all 5 stations
-No shuffling → preserves temporal order (critical for time-series)
-Location ID → added as learnable embedding (not one-hot)
+**Rationale**  
+- **Global scaling** → consistent feature ranges across all 5 stations  
+- **No shuffling** → preserves temporal order (critical for time-series)  
+- **Location ID** → added as learnable embedding (not one-hot)
 
 All 482,136 sequences saved in processed_data.npz — ready for training in seconds.
 
