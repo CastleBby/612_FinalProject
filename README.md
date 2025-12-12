@@ -838,14 +838,4 @@ This project demonstrates that **causal transformer models** can effectively pre
 
 ---
 
-## 📞 Contact
-
-**Author**: Johnson Huang  
-**Course**: DATA 612 Final Project  
-**Date**: November 2025  
 **Reproducibility Seed**: 202511
-
----
-
-**Last Updated**: November 28, 2025  
-**Model Version**: 3.0 (Causal + Multi-Task)
