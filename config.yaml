@@ -34,36 +34,31 @@ data:
   val_split: 0.15
 
 model:
-  # Architecture parameters
-  d_model: 512  # Model capacity
+  # Architecture parameters (V4: Enhanced Classification)
+  # ⚠️ REDUCED CAPACITY: 512→256 to prevent overfitting (20.8M→5.2M params)
+  # With only 767K training samples and 5 locations, 20.8M params was excessive
+  d_model: 256  # Model capacity (REDUCED by 50%)
   nhead: 8
   num_encoder_layers: 4  # Encoder depth (bi-directional)
   num_decoder_layers: 2  # Decoder depth (with cross-attention)
   num_layers: 6  # For backwards compatibility with old models
   embed_dim: 128  # Embedding dimension
-  dropout: 0.2  # Higher dropout to prevent overfitting
+  dropout: 0.3  # INCREASED dropout to prevent overfitting (was 0.2)
   
-  # Advanced layer controls (Encoder-Decoder architecture)
-  use_advanced_layers: true  # Enable: multi-scale attention, improved head
+  # Advanced layer controls (V4: Enhanced architecture)
+  use_advanced_layers: true  # Enable: multi-scale attention, enhanced classification head
   use_physics_loss: false     # Disable physics constraints (too restrictive)
   physics_weight: 0.05       # Light physics weight if enabled
   
-  # Architecture components
-  use_series_decomposition: false  # Enable series decomposition (trend + seasonal)
-  use_decoder: false  # Enable decoder with cross-attention to encoder
-  use_local_attention: false  # Enable local self-attention via temporal convolution
-  local_kernel_size: 3  # Kernel size for local attention (if enabled)
-  encoder_causal: true  # Use causal masking in encoder (false = bi-directional, matches README V3)
-  
-  # Training parameters
-  lr: 0.0001  # Lower LR for multi-task stability
+  # Training parameters (V4: Optimized for classification)
+  lr: 0.00008  # Slightly lower LR for stable focal loss training
   batch_size: 128  # Larger batch for stable gradients
-  epochs: 100  # More epochs for convergence
+  epochs: 120  # More epochs for focal loss convergence
   device: 'mps'  # For M1 Max acceleration (options: 'cuda', 'mps', 'cpu')
-  gradient_clip: 1.0  # Gradient clipping for stability
-  weight_decay: 0.01  # L2 regularization
+  gradient_clip: 1.0  # Gradient clipping for stability (prevent exploding gradients)
+  weight_decay: 0.015  # Slightly higher L2 regularization
   warmup_epochs: 10  # Learning rate warmup
-  patience: 15  # Early stopping patience
+  patience: 20  # Increased patience for focal loss convergence
   
   # Feature grouping for domain-aware embeddings (total: 11 features = 5 weather + 6 temporal)
   feature_groups:
@@ -80,3 +75,49 @@ eval:
   extreme_threshold: 0.9  # 90th percentile for extremes
   rain_threshold: 0.1  # mm for event detection
   prediction_threshold: 0.20  # mm - predictions below this are set to 0 (OPTIMIZED on 2000-2024 data: maximizes CSI=0.5739)
+
+# V5 IMPROVED: Anti-Overfitting Enhanced Transformer (Transformer-based)
+v5:
+  output_dir: 'v5_results'
+  
+  # VQ-VAE baseline integration (RECOMMENDED for noise reduction)
+  vqvae_checkpoint: 'nowcasting_baseline_results/vqvae_best.pth'  # Pre-trained VQ-VAE
+  use_vqvae: true  # ENABLED: VQ-VAE features help reduce noise
+  freeze_vqvae: true  # Freeze VQ-VAE weights
+  
+  # Transformer architecture (OPTIMIZED: Deeper but better regularized)
+  d_model: 768  # Model dimension (increased significantly for better capacity)
+  nhead: 12  # Number of attention heads (increased for more capacity)
+  num_encoder_layers: 8  # Transformer layers (deeper - 6→8)
+  dim_feedforward: 3072  # FFN dimension (4x d_model, increased)
+  dropout: 0.2  # Transformer dropout (balanced - not too aggressive)
+  head_dropout: 0.3  # Dropout for output heads (balanced)
+  stochastic_depth: 0.05  # Layer dropout (reduced - less aggressive)
+  use_probsparse: true  # Use ProbSparse attention (Informer)
+  
+  # Training parameters (ADJUSTED for larger model)
+  batch_size: 128  # Reduced for larger model (58M params)
+  gradient_accumulation_steps: 4  # Effective batch size: 512 (maintained)
+  lr: 0.0001  # Learning rate (stable)
+  weight_decay: 0.0005  # L2 regularization (balanced - not too aggressive)
+  epochs: 200  # Max epochs (increased for deeper training)
+  gradient_clip: 1.0  # Gradient clipping
+  patience: 30  # Early stopping patience (increased to allow deeper training)
+  warmup_steps: 2000  # LR warmup steps (increased for deeper model)
+  
+  # Multi-task loss weights (HEAVILY FAVOR CLASSIFICATION TO FIX FN)
+  regression_weight: 0.3  # Reduced (regression less important)
+  classification_weight: 0.7  # Increased (classification critical - fix false negatives)
+  
+  # Focal loss parameters (HEAVILY PENALIZE FALSE NEGATIVES)
+  focal_alpha: 0.8  # Weight for positive class (rain) - HEAVILY favor rain detection
+  focal_gamma: 5.0   # Focusing parameter (increased - focus hard on missed rain)
+  label_smoothing: 0.05  # Label smoothing (reduced - need sharper predictions)
+  
+  # Data augmentation (NEW for anti-overfitting)
+  mixup_alpha: 0.2  # Mixup augmentation parameter
+  noise_std: 0.01  # Gaussian noise std for input
+  
+  # Extreme event handling (NEW)
+  extreme_weight: 2.0  # Weight multiplier for extreme events
+  extreme_threshold_percentile: 0.9  # 90th percentile
