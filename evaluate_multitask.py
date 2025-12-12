@@ -10,6 +10,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import os
 import pandas as pd
+import argparse
 from transformer_model import get_model, set_seed, RANDOM_SEED
 
 # Set plotting style
@@ -18,9 +19,18 @@ plt.rcParams['figure.figsize'] = (12, 6)
 plt.rcParams['font.size'] = 11
 
 
-def load_config():
-    with open('config.yaml', 'r') as f:
+def load_config(config_path=None):
+    if config_path is None:
+        config_path = os.environ.get('CONFIG_PATH', 'config.yaml')
+    with open(config_path, 'r') as f:
         return yaml.safe_load(f)
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(description='Evaluate multi-task precipitation transformer')
+    parser.add_argument('--config', default=os.environ.get('CONFIG_PATH', 'config.yaml'),
+                        help='Path to config YAML (default: config.yaml or CONFIG_PATH env)')
+    return parser.parse_args()
 
 
 def unscale(y_scaled, scaler, precip_idx):
@@ -47,7 +57,9 @@ def classification_metrics(y_true, y_pred, threshold):
 
 
 if __name__ == '__main__':
-    cfg = load_config()
+    args = parse_args()
+    os.environ['CONFIG_PATH'] = args.config
+    cfg = load_config(args.config)
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'mps' if torch.backends.mps.is_available() else 'cpu')
     print(f"Using device: {device}")
@@ -61,13 +73,15 @@ if __name__ == '__main__':
     precip_idx = cfg['data']['variables'].index('precipitation')
 
     # Load multi-task model
+    num_encoder_layers = cfg['model'].get('num_encoder_layers', cfg['model']['num_layers'])
+
     model = get_model(
         'multitask',
         input_dim=X_test.shape[-1],
         seq_len=cfg['data']['seq_len'],
         d_model=cfg['model']['d_model'],
         nhead=cfg['model']['nhead'],
-        num_layers=cfg['model']['num_layers'],
+        num_layers=num_encoder_layers,
         embed_dim=cfg['model']['embed_dim'],
         dropout=cfg['model']['dropout'],
         num_locations=len(cfg['data']['locations']),
