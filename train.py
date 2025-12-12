@@ -7,7 +7,8 @@ import numpy as np
 import yaml
 from tqdm import tqdm
 import os
-from transformer_model import get_model
+import random
+from transformer_model import get_model, weighted_physics_mse, set_seed, RANDOM_SEED
 
 
 def load_config():
@@ -24,12 +25,69 @@ def weighted_mse(y_pred, y_true, precip_obs, quantile=0.9, extreme_weight=5.0):
     return (mse * weights).mean()
 
 
+def get_loss_function(cfg, use_physics=True):
+    """
+    Get the appropriate loss function based on config.
+    
+    Args:
+        cfg: Configuration dictionary
+        use_physics: Whether to use physics-informed loss
+    
+    Returns:
+        Loss function callable
+    """
+    if use_physics and cfg['model'].get('use_physics_loss', False):
+        # Create variable indices mapping
+        variable_indices = {
+            var: idx for idx, var in enumerate(cfg['data']['variables'])
+        }
+        
+        def physics_loss_fn(y_pred, y_true, x_input):
+            return weighted_physics_mse(
+                y_pred, y_true, x_input, variable_indices,
+                quantile=cfg['eval']['extreme_threshold'],
+                extreme_weight=cfg['model']['extreme_weight'],
+                physics_weight=cfg['model'].get('physics_weight', 0.1)
+            )
+        
+        print("Using physics-informed loss function")
+        return physics_loss_fn
+    else:
+        # Standard weighted MSE
+        def standard_loss_fn(y_pred, y_true, x_input):
+            precip_idx = cfg['data']['variables'].index('precipitation')
+            precip_obs = x_input[:, -1, precip_idx]
+            return weighted_mse(
+                y_pred, y_true, precip_obs,
+                quantile=cfg['eval']['extreme_threshold'],
+                extreme_weight=cfg['model']['extreme_weight']
+            )
+        
+        print("Using standard weighted MSE loss")
+        return standard_loss_fn
+
+
 if __name__ == '__main__':
+    # --------------------------------------------------------------
+    # 0. Set random seeds for reproducibility
+    # --------------------------------------------------------------
+    cfg = load_config()
+    
+    # Get seed from config or use default
+    seed = cfg.get('reproducibility', {}).get('random_seed', RANDOM_SEED)
+    set_seed(seed)
+    
+    # Additional Python random seed
+    random.seed(seed)
+    
+    print("="*80)
+    print("Enhanced Transformer Training with Geographic & Temporal Layers")
+    print("="*80)
+    print(f"Random seed set to: {seed} for reproducibility")
+    
     # --------------------------------------------------------------
     # 1. Config & device
     # --------------------------------------------------------------
-    cfg = load_config()
-
     device = 'cpu'
     if torch.cuda.is_available():
         device = 'cuda'
@@ -60,21 +118,44 @@ if __name__ == '__main__':
     val_loader   = DataLoader(val_ds,   batch_size=cfg['model']['batch_size'], shuffle=False)
 
     # --------------------------------------------------------------
-    # 3. Build model
+    # 3. Build model with location coordinates for geographic attention
     # --------------------------------------------------------------
     input_dim = X_train.shape[-1]
+    
+    # Extract location coordinates for geographic attention
+    location_coords = torch.tensor([
+        [loc['lat'], loc['lon']] for loc in cfg['data']['locations']
+    ], dtype=torch.float32)
+    
+    use_advanced = cfg['model'].get('use_advanced_layers', True)
+    print(f"Building model with advanced layers: {use_advanced}")
+    
+    # Use encoder-decoder architecture (V3)
     model = get_model(
-        'transformer',
+        'encoder_decoder',
         input_dim=input_dim,
         seq_len=cfg['data']['seq_len'],
         d_model=cfg['model']['d_model'],
         nhead=cfg['model']['nhead'],
-        num_layers=cfg['model']['num_layers'],
+        num_encoder_layers=cfg['model'].get('num_encoder_layers', 4),
+        num_decoder_layers=cfg['model'].get('num_decoder_layers', 2),
         embed_dim=cfg['model']['embed_dim'],
         dropout=cfg['model']['dropout'],
         num_locations=len(cfg['data']['locations']),
-        feature_groups=cfg['model']['feature_groups']
+        feature_groups=cfg['model']['feature_groups'],
+        location_coords=location_coords,
+        use_advanced_layers=use_advanced
     ).to(device)
+    
+    total_params = sum(p.numel() for p in model.parameters())
+    print(f"Model parameters: {total_params:,} ({total_params/1e6:.2f}M)")
+    
+    if use_advanced:
+        print("\nModel components:")
+        print("  ✓ Geographic Attention Layer")
+        print("  ✓ Multi-Scale Temporal Layer")
+        print("  ✓ Weather Regime Adapter")
+        print("  ✓ Domain-Aware Feature Embeddings")
 
     optimizer = torch.optim.AdamW(
         model.parameters(),
@@ -96,6 +177,9 @@ if __name__ == '__main__':
 
     scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
 
+    # Get loss function
+    loss_fn = get_loss_function(cfg, use_physics=cfg['model'].get('use_physics_loss', False))
+    
     # Mixed precision training (only for CUDA)
     use_amp = device.type == 'cuda'
     scaler = GradScaler() if use_amp else None
@@ -106,9 +190,13 @@ if __name__ == '__main__':
     # 4. Training loop
     # --------------------------------------------------------------
     best_val = float('inf')
-    patience = 15
+    patience = cfg['model'].get('patience', 15)
     patience_counter = 0
     start_epoch = 1
+    
+    print("\n" + "="*80)
+    print("Starting training...")
+    print("="*80)
 
     # Check if we should resume from checkpoint
     resume_checkpoint = os.path.exists('best_model.pth')
@@ -140,20 +228,13 @@ if __name__ == '__main__':
         for xb, yb, locb in tqdm(train_loader, desc=f'Epoch {epoch} [train]'):
             xb, yb, locb = xb.to(device), yb.to(device), locb.to(device)
 
-            # precipitation observed at the *last* input hour → proxy for "current rain"
-            precip_obs = xb[:, -1, cfg['data']['variables'].index('precipitation')]
-
             optimizer.zero_grad()
 
             # Mixed precision forward pass
             if use_amp:
                 with autocast():
                     pred = model(xb, locb)
-                    loss = weighted_mse(
-                        pred, yb, precip_obs,
-                        quantile=cfg['eval']['extreme_threshold'],
-                        extreme_weight=cfg['model']['extreme_weight']
-                    )
+                    loss = loss_fn(pred, yb, xb)
                 scaler.scale(loss).backward()
                 scaler.unscale_(optimizer)
                 torch.nn.utils.clip_grad_norm_(model.parameters(), cfg['model'].get('gradient_clip', 1.0))
@@ -161,11 +242,7 @@ if __name__ == '__main__':
                 scaler.update()
             else:
                 pred = model(xb, locb)
-                loss = weighted_mse(
-                    pred, yb, precip_obs,
-                    quantile=cfg['eval']['extreme_threshold'],
-                    extreme_weight=cfg['model']['extreme_weight']
-                )
+                loss = loss_fn(pred, yb, xb)
                 loss.backward()
                 torch.nn.utils.clip_grad_norm_(model.parameters(), cfg['model'].get('gradient_clip', 1.0))
                 optimizer.step()
@@ -178,13 +255,8 @@ if __name__ == '__main__':
         with torch.no_grad():
             for xb, yb, locb in val_loader:
                 xb, yb, locb = xb.to(device), yb.to(device), locb.to(device)
-                precip_obs = xb[:, -1, cfg['data']['variables'].index('precipitation')]
                 pred = model(xb, locb)
-                val_loss += weighted_mse(
-                    pred, yb, precip_obs,
-                    quantile=cfg['eval']['extreme_threshold'],
-                    extreme_weight=cfg['model']['extreme_weight']
-                ).item()
+                val_loss += loss_fn(pred, yb, xb).item()
 
         train_loss /= len(train_loader)
         val_loss   /= len(val_loader)
