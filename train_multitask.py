@@ -9,7 +9,8 @@ import numpy as np
 import yaml
 from tqdm import tqdm
 import os
-from transformer_model import get_model
+import random
+from transformer_model import get_model, set_seed, RANDOM_SEED
 
 
 def load_config():
@@ -48,13 +49,31 @@ def binary_cross_entropy_with_logits_weighted(logits, y_true_binary, rain_weight
 
 if __name__ == '__main__':
     # --------------------------------------------------------------
-    # 1. Config & device
+    # 0. Set random seeds for reproducibility
     # --------------------------------------------------------------
     cfg = load_config()
-
+    
+    # Get seed from config or use default
+    seed = cfg.get('reproducibility', {}).get('random_seed', RANDOM_SEED)
+    set_seed(seed)
+    
+    # Additional Python random seed
+    random.seed(seed)
+    
+    print("="*80)
+    print("Multi-Task Transformer Training (Optimized)")
+    print("="*80)
+    print(f"Random seed set to: {seed} for reproducibility")
+    
+    # --------------------------------------------------------------
+    # 1. Config & device with optimizations
+    # --------------------------------------------------------------
     device = 'cpu'
     if torch.cuda.is_available():
         device = 'cuda'
+        # Enable cuDNN benchmarking for faster training
+        torch.backends.cudnn.benchmark = True
+        print("✓ cuDNN benchmarking enabled")
     elif torch.backends.mps.is_available():
         device = 'mps'
     device = torch.device(device)
@@ -96,8 +115,28 @@ if __name__ == '__main__':
         torch.LongTensor(loc_val)
     )
 
-    train_loader = DataLoader(train_ds, batch_size=cfg['model']['batch_size'], shuffle=True)
-    val_loader   = DataLoader(val_ds,   batch_size=cfg['model']['batch_size'], shuffle=False)
+    # Optimized DataLoader settings
+    num_workers = 4 if device.type == 'cuda' else 0  # Parallel data loading
+    pin_memory = device.type == 'cuda'  # Faster CPU-to-GPU transfer
+    
+    train_loader = DataLoader(
+        train_ds, 
+        batch_size=cfg['model']['batch_size'], 
+        shuffle=True,
+        num_workers=num_workers,
+        pin_memory=pin_memory,
+        persistent_workers=num_workers > 0
+    )
+    val_loader = DataLoader(
+        val_ds, 
+        batch_size=cfg['model']['batch_size'], 
+        shuffle=False,
+        num_workers=num_workers,
+        pin_memory=pin_memory,
+        persistent_workers=num_workers > 0
+    )
+    
+    print(f"✓ DataLoader: {num_workers} workers, pin_memory={pin_memory}")
 
     # --------------------------------------------------------------
     # 3. Build multi-task model
@@ -113,7 +152,14 @@ if __name__ == '__main__':
         embed_dim=cfg['model']['embed_dim'],
         dropout=cfg['model']['dropout'],
         num_locations=len(cfg['data']['locations']),
-        feature_groups=cfg['model']['feature_groups']
+        feature_groups=cfg['model']['feature_groups'],
+        # Architecture configuration flags (defaults match ver_4 settings)
+        use_series_decomposition=cfg['model'].get('use_series_decomposition', False),
+        use_decoder=cfg['model'].get('use_decoder', False),
+        num_decoder_layers=cfg['model'].get('num_decoder_layers', 2),
+        use_local_attention=cfg['model'].get('use_local_attention', False),
+        local_kernel_size=cfg['model'].get('local_kernel_size', 3),
+        encoder_causal=cfg['model'].get('encoder_causal', True)
     ).to(device)
 
     total_params = sum(p.numel() for p in model.parameters())
@@ -193,7 +239,8 @@ if __name__ == '__main__':
             batch_y_binary = batch_y_binary.to(device)
             batch_loc = batch_loc.to(device)
 
-            optimizer.zero_grad()
+            # Set gradients to None (faster than zero_grad)
+            optimizer.zero_grad(set_to_none=True)
 
             if use_amp:
                 with autocast():
