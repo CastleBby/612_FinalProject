@@ -1,0 +1,523 @@
+================================================================================
+NowcastingGPT Baseline - Maryland Weather Forecasting
+================================================================================
+Job ID: 16599367
+Node: gpu-a5-1
+Start time: Fri Dec  5 18:06:44 EST 2025
+
+Python: /scratch/zt1/project/msml612-fa25/user/shhuang/useNowcastingGPT_env/bin/python
+PyTorch version: 2.9.1+cu128
+CUDA available: True
+
+================================================================================
+Stage 1: Data Download & Formatting
+================================================================================
+================================================================================
+NowcastingGPT Data Downloader - Maryland Weather Data
+================================================================================
+Random seed: 202511
+
+Configuration loaded from config.yaml
+  Locations: 5
+  Date range: 2000-01-01 to 2024-12-31
+  Variables: ['temperature_2m', 'relative_humidity_2m', 'precipitation', 'pressure_msl', 'wind_speed_10m']
+
+Starting data download from Open-Meteo API...
+(This may take several minutes depending on date range)
+
+
+================================================================================
+Downloading data for 5 locations
+================================================================================
+
+[1/5] Processing Baltimore...
+
+Downloading data for Baltimore (39.29, -76.61)...
+  Date range: 2000-01-01 to 2024-12-31
+  Strategy: Chunked download (5 years per request)
+  Downloading chunk: 2000-01-01 to 2004-12-30
+    ✓ Downloaded 43824 hours
+  Downloading chunk: 2004-12-31 to 2009-12-30
+    ✓ Downloaded 43824 hours
+  Downloading chunk: 2009-12-31 to 2014-12-30
+    ✓ Downloaded 43824 hours
+  Downloading chunk: 2014-12-31 to 2019-12-30
+    ✓ Downloaded 43824 hours
+  Downloading chunk: 2019-12-31 to 2024-12-29
+    ✓ Downloaded 43824 hours
+  Downloading chunk: 2024-12-30 to 2024-12-31
+    ✓ Downloaded 48 hours
+  ✓ Total downloaded for Baltimore: 219168 hours
+✓ Baltimore complete: 219,168 records
+
+[2/5] Processing Annapolis...
+  Waiting 5 seconds before next location (API rate limit)...
+
+Downloading data for Annapolis (38.98, -76.49)...
+  Date range: 2000-01-01 to 2024-12-31
+  Strategy: Chunked download (5 years per request)
+  Downloading chunk: 2000-01-01 to 2004-12-30
+    ✓ Downloaded 43824 hours
+  Downloading chunk: 2004-12-31 to 2009-12-30
+    ✓ Downloaded 43824 hours
+  Downloading chunk: 2009-12-31 to 2014-12-30
+    ✓ Downloaded 43824 hours
+  Downloading chunk: 2014-12-31 to 2019-12-30
+    ✓ Downloaded 43824 hours
+  Downloading chunk: 2019-12-31 to 2024-12-29
+    ✓ Downloaded 43824 hours
+  Downloading chunk: 2024-12-30 to 2024-12-31
+    Attempt 1/3 failed: 429 Client Error: Too Many Requests for url: https://archive-api.open-meteo.com/v1/archive?latitude=38.98&longitude=-76.49&start_date=2024-12-30&end_date=2024-12-31&hourly=temperature_2m%2Crelative_humidity_2m%2Cprecipitation%2Cpressure_msl%2Cwind_speed_10m&timezone=America%2FNew_York
+    Retrying in 10 seconds...
+    ✓ Downloaded 48 hours
+  ✓ Total downloaded for Annapolis: 219168 hours
+✓ Annapolis complete: 219,168 records
+
+[3/5] Processing Cumberland...
+  Waiting 5 seconds before next location (API rate limit)...
+
+Downloading data for Cumberland (39.62, -78.76)...
+  Date range: 2000-01-01 to 2024-12-31
+  Strategy: Chunked download (5 years per request)
+  Downloading chunk: 2000-01-01 to 2004-12-30
+    ✓ Downloaded 43824 hours
+  Downloading chunk: 2004-12-31 to 2009-12-30
+    ✓ Downloaded 43824 hours
+  Downloading chunk: 2009-12-31 to 2014-12-30
+    ✓ Downloaded 43824 hours
+  Downloading chunk: 2014-12-31 to 2019-12-30
+    ✓ Downloaded 43824 hours
+  Downloading chunk: 2019-12-31 to 2024-12-29
+    ✓ Downloaded 43824 hours
+  Downloading chunk: 2024-12-30 to 2024-12-31
+    ✓ Downloaded 48 hours
+  ✓ Total downloaded for Cumberland: 219168 hours
+✓ Cumberland complete: 219,168 records
+
+[4/5] Processing Ocean City...
+  Waiting 5 seconds before next location (API rate limit)...
+
+Downloading data for Ocean City (38.34, -75.08)...
+  Date range: 2000-01-01 to 2024-12-31
+  Strategy: Chunked download (5 years per request)
+  Downloading chunk: 2000-01-01 to 2004-12-30
+    ✓ Downloaded 43824 hours
+  Downloading chunk: 2004-12-31 to 2009-12-30
+    ✓ Downloaded 43824 hours
+  Downloading chunk: 2009-12-31 to 2014-12-30
+    ✓ Downloaded 43824 hours
+  Downloading chunk: 2014-12-31 to 2019-12-30
+    ✓ Downloaded 43824 hours
+  Downloading chunk: 2019-12-31 to 2024-12-29
+    ✓ Downloaded 43824 hours
+  Downloading chunk: 2024-12-30 to 2024-12-31
+    ✓ Downloaded 48 hours
+  ✓ Total downloaded for Ocean City: 219168 hours
+✓ Ocean City complete: 219,168 records
+
+[5/5] Processing Hagerstown...
+  Waiting 5 seconds before next location (API rate limit)...
+
+Downloading data for Hagerstown (39.64, -77.72)...
+  Date range: 2000-01-01 to 2024-12-31
+  Strategy: Chunked download (5 years per request)
+  Downloading chunk: 2000-01-01 to 2004-12-30
+    ✓ Downloaded 43824 hours
+  Downloading chunk: 2004-12-31 to 2009-12-30
+    ✓ Downloaded 43824 hours
+  Downloading chunk: 2009-12-31 to 2014-12-30
+    ✓ Downloaded 43824 hours
+  Downloading chunk: 2014-12-31 to 2019-12-30
+    ✓ Downloaded 43824 hours
+  Downloading chunk: 2019-12-31 to 2024-12-29
+    ✓ Downloaded 43824 hours
+  Downloading chunk: 2024-12-30 to 2024-12-31
+    ✓ Downloaded 48 hours
+  ✓ Total downloaded for Hagerstown: 219168 hours
+✓ Hagerstown complete: 219,168 records
+
+================================================================================
+Download Summary
+================================================================================
+Successful: 5/5 locations
+
+Total records: 1,095,840
+Expected records: ~1,095,000 (5 locations × 25 years × 365 days × 24 hours)
+Data coverage: 100.1%
+
+================================================================================
+DATA QUALITY CHECK
+================================================================================
+✓ No data quality issues detected
+================================================================================
+
+✓ Raw data saved to: nowcasting_gpt_data/raw_weather_data.csv
+✓ Raw data saved to: nowcasting_gpt_data/raw_weather_data.pkl
+✓ Metadata saved to: nowcasting_gpt_data/metadata.json
+
+================================================================================
+DATA SUMMARY
+================================================================================
+Total records: 1,095,840
+Date range: 2000-01-01 00:00:00 to 2024-12-31 23:00:00
+Locations: 5
+
+Records per location:
+location
+Annapolis     219168
+Baltimore     219168
+Cumberland    219168
+Hagerstown    219168
+Ocean City    219168
+dtype: int64
+
+Precipitation statistics (mm/h):
+               count      mean       std  min  25%  50%  75%   max
+location                                                          
+Annapolis   219168.0  0.145004  0.642976  0.0  0.0  0.0  0.0  48.3
+Baltimore   219168.0  0.146203  0.646162  0.0  0.0  0.0  0.0  53.5
+Cumberland  219168.0  0.106130  0.487602  0.0  0.0  0.0  0.0  24.2
+Hagerstown  219168.0  0.112604  0.513119  0.0  0.0  0.0  0.0  34.2
+Ocean City  219168.0  0.128856  0.602198  0.0  0.0  0.0  0.0  19.7
+
+Missing values:
+time                    0
+temperature_2m          0
+relative_humidity_2m    0
+precipitation           0
+pressure_msl            0
+wind_speed_10m          0
+location                0
+latitude                0
+longitude               0
+dtype: int64
+================================================================================
+
+✅ Data download complete!
+
+Next steps:
+  1. Run: python nowcasting_gpt_data_formatter.py
+  2. Then: sbatch nowcasting_gpt_pipeline.sbatch
+================================================================================
+NowcastingGPT Data Formatter
+================================================================================
+Random seed: 202511
+
+Loading raw data from: nowcasting_gpt_data/raw_weather_data.pkl
+Loaded 1,095,840 records
+
+================================================================================
+FORMATTING DATA TO NOWCASTINGGPT FORMAT
+================================================================================
+Split ratios: Train=70.0%, Val=15.0%, Test=15.0%
+
+Processing Baltimore...
+
+Temporal split:
+  Training:   153,417 records (2000-01-01 00:00:00 to 2017-07-02 08:00:00)
+  Validation: 32,875 records (2017-07-02 09:00:00 to 2021-04-02 03:00:00)
+  Test:       32,876 records (2021-04-02 04:00:00 to 2024-12-31 23:00:00)
+  ✓ Baltimore (train): 153,417 records → nowcasting_gpt_data/formatted_csv/training_Baltimore.csv
+    Sample (first 3 rows):
+      200001010000,0.0
+      200001010100,0.0
+      200001010200,0.0
+  ✓ Baltimore (val): 32,875 records → nowcasting_gpt_data/formatted_csv/validation_Baltimore.csv
+    Sample (first 3 rows):
+      201707020900,0.0
+      201707021000,0.0
+      201707021100,0.0
+  ✓ Baltimore (test): 32,876 records → nowcasting_gpt_data/formatted_csv/testing_Baltimore.csv
+    Sample (first 3 rows):
+      202104020400,0.0
+      202104020500,0.0
+      202104020600,0.0
+
+Processing Annapolis...
+
+Temporal split:
+  Training:   153,417 records (2000-01-01 00:00:00 to 2017-07-02 08:00:00)
+  Validation: 32,875 records (2017-07-02 09:00:00 to 2021-04-02 03:00:00)
+  Test:       32,876 records (2021-04-02 04:00:00 to 2024-12-31 23:00:00)
+  ✓ Annapolis (train): 153,417 records → nowcasting_gpt_data/formatted_csv/training_Annapolis.csv
+    Sample (first 3 rows):
+      200001010000,0.0
+      200001010100,0.0
+      200001010200,0.0
+  ✓ Annapolis (val): 32,875 records → nowcasting_gpt_data/formatted_csv/validation_Annapolis.csv
+    Sample (first 3 rows):
+      201707020900,0.0
+      201707021000,0.1
+      201707021100,0.1
+  ✓ Annapolis (test): 32,876 records → nowcasting_gpt_data/formatted_csv/testing_Annapolis.csv
+    Sample (first 3 rows):
+      202104020400,0.0
+      202104020500,0.0
+      202104020600,0.0
+
+Processing Cumberland...
+
+Temporal split:
+  Training:   153,417 records (2000-01-01 00:00:00 to 2017-07-02 08:00:00)
+  Validation: 32,875 records (2017-07-02 09:00:00 to 2021-04-02 03:00:00)
+  Test:       32,876 records (2021-04-02 04:00:00 to 2024-12-31 23:00:00)
+  ✓ Cumberland (train): 153,417 records → nowcasting_gpt_data/formatted_csv/training_Cumberland.csv
+    Sample (first 3 rows):
+      200001010000,0.0
+      200001010100,0.0
+      200001010200,0.0
+  ✓ Cumberland (val): 32,875 records → nowcasting_gpt_data/formatted_csv/validation_Cumberland.csv
+    Sample (first 3 rows):
+      201707020900,0.1
+      201707021000,0.0
+      201707021100,0.0
+  ✓ Cumberland (test): 32,876 records → nowcasting_gpt_data/formatted_csv/testing_Cumberland.csv
+    Sample (first 3 rows):
+      202104020400,0.0
+      202104020500,0.0
+      202104020600,0.0
+
+Processing Ocean City...
+
+Temporal split:
+  Training:   153,417 records (2000-01-01 00:00:00 to 2017-07-02 08:00:00)
+  Validation: 32,875 records (2017-07-02 09:00:00 to 2021-04-02 03:00:00)
+  Test:       32,876 records (2021-04-02 04:00:00 to 2024-12-31 23:00:00)
+  ✓ Ocean City (train): 153,417 records → nowcasting_gpt_data/formatted_csv/training_OceanCity.csv
+    Sample (first 3 rows):
+      200001010000,0.0
+      200001010100,0.0
+      200001010200,0.0
+  ✓ Ocean City (val): 32,875 records → nowcasting_gpt_data/formatted_csv/validation_OceanCity.csv
+    Sample (first 3 rows):
+      201707020900,0.0
+      201707021000,0.0
+      201707021100,0.0
+  ✓ Ocean City (test): 32,876 records → nowcasting_gpt_data/formatted_csv/testing_OceanCity.csv
+    Sample (first 3 rows):
+      202104020400,0.0
+      202104020500,0.0
+      202104020600,0.0
+
+Processing Hagerstown...
+
+Temporal split:
+  Training:   153,417 records (2000-01-01 00:00:00 to 2017-07-02 08:00:00)
+  Validation: 32,875 records (2017-07-02 09:00:00 to 2021-04-02 03:00:00)
+  Test:       32,876 records (2021-04-02 04:00:00 to 2024-12-31 23:00:00)
+  ✓ Hagerstown (train): 153,417 records → nowcasting_gpt_data/formatted_csv/training_Hagerstown.csv
+    Sample (first 3 rows):
+      200001010000,0.0
+      200001010100,0.0
+      200001010200,0.0
+  ✓ Hagerstown (val): 32,875 records → nowcasting_gpt_data/formatted_csv/validation_Hagerstown.csv
+    Sample (first 3 rows):
+      201707020900,0.0
+      201707021000,0.0
+      201707021100,0.0
+  ✓ Hagerstown (test): 32,876 records → nowcasting_gpt_data/formatted_csv/testing_Hagerstown.csv
+    Sample (first 3 rows):
+      202104020400,0.0
+      202104020500,0.0
+      202104020600,0.0
+
+Creating combined CSVs (all locations)...
+  ✓ Combined training: 767,085 records
+  ✓ Combined validation: 164,375 records
+  ✓ Combined test: 164,380 records
+
+✓ Metadata saved to: nowcasting_gpt_data/formatted_csv/format_metadata.json
+
+================================================================================
+FORMATTING COMPLETE
+================================================================================
+Output directory: nowcasting_gpt_data/formatted_csv/
+
+Files created:
+  - training_{location}.csv (per location)
+  - validation_{location}.csv (per location)
+  - testing_{location}.csv (per location)
+  - training_AllLocations.csv (combined)
+  - validation_AllLocations.csv (combined)
+  - testing_AllLocations.csv (combined)
+
+Precipitation statistics (training set):
+  Mean: 0.1190 mm/h
+  Std:  0.5170 mm/h
+  Max:  18.2000 mm/h
+  Rain events (>0.1mm): 11.39%
+================================================================================
+
+✅ Data formatting complete!
+
+Next steps:
+  1. Review formatted CSV files in nowcasting_gpt_data/formatted_csv/
+  2. Run: sbatch nowcasting_gpt_pipeline.sbatch
+
+================================================================================
+Stage 2: Training NowcastingGPT Baseline
+================================================================================
+================================================================================
+NowcastingGPT Baseline Training
+================================================================================
+Random seed: 202511
+
+Device: cuda
+GPU: Tesla V100-SXM2-32GB
+
+Configuration:
+  Observation time: 24 hours
+  Prediction time: 1 hour
+  Batch size: 64
+  Epochs: 100
+  Learning rate: 0.0001
+
+Loading data...
+Loading data from: nowcasting_gpt_data/formatted_csv/training_AllLocations.csv
+  Loaded 767085 hours
+  Created 767061 sequences (obs=24h, pred=1h)
+Training DataLoader created: 767061 sequences, batch_size=64
+Loading data from: nowcasting_gpt_data/formatted_csv/validation_AllLocations.csv
+  Loaded 164375 hours
+  Created 164351 sequences (obs=24h, pred=1h)
+Validation DataLoader created: 164351 sequences
+Training sequences: 767,061
+Validation sequences: 164,351
+
+Creating model...
+Model parameters: 0.80M
+
+Starting training...
+
+Epoch   1/100 | Train Loss: 0.162109 | Val Loss: 0.401945 | LR: 0.000100
+  ✓ Saved best model (val_loss=0.401945)
+Epoch   2/100 | Train Loss: 0.158119 | Val Loss: 0.396040 | LR: 0.000100
+  ✓ Saved best model (val_loss=0.396040)
+Epoch   3/100 | Train Loss: 0.157728 | Val Loss: 0.404996 | LR: 0.000100
+Epoch   4/100 | Train Loss: 0.157111 | Val Loss: 0.405252 | LR: 0.000100
+Epoch   5/100 | Train Loss: 0.156810 | Val Loss: 0.397126 | LR: 0.000099
+Epoch   6/100 | Train Loss: 0.156616 | Val Loss: 0.397323 | LR: 0.000099
+Epoch   7/100 | Train Loss: 0.156538 | Val Loss: 0.393656 | LR: 0.000099
+  ✓ Saved best model (val_loss=0.393656)
+Epoch   8/100 | Train Loss: 0.155996 | Val Loss: 0.393948 | LR: 0.000098
+Epoch   9/100 | Train Loss: 0.155758 | Val Loss: 0.394174 | LR: 0.000098
+Epoch  10/100 | Train Loss: 0.155537 | Val Loss: 0.392542 | LR: 0.000098
+  ✓ Saved best model (val_loss=0.392542)
+Epoch  11/100 | Train Loss: 0.155666 | Val Loss: 0.395185 | LR: 0.000097
+Epoch  12/100 | Train Loss: 0.155709 | Val Loss: 0.392062 | LR: 0.000096
+  ✓ Saved best model (val_loss=0.392062)
+Epoch  13/100 | Train Loss: 0.155469 | Val Loss: 0.394406 | LR: 0.000096
+Epoch  14/100 | Train Loss: 0.155103 | Val Loss: 0.395161 | LR: 0.000095
+Epoch  15/100 | Train Loss: 0.155024 | Val Loss: 0.397275 | LR: 0.000095
+Epoch  16/100 | Train Loss: 0.154803 | Val Loss: 0.392126 | LR: 0.000094
+Epoch  17/100 | Train Loss: 0.154356 | Val Loss: 0.394798 | LR: 0.000093
+Epoch  18/100 | Train Loss: 0.154786 | Val Loss: 0.396293 | LR: 0.000092
+Epoch  19/100 | Train Loss: 0.154114 | Val Loss: 0.393870 | LR: 0.000091
+Epoch  20/100 | Train Loss: 0.154555 | Val Loss: 0.398913 | LR: 0.000090
+Epoch  21/100 | Train Loss: 0.154425 | Val Loss: 0.395260 | LR: 0.000090
+Epoch  22/100 | Train Loss: 0.154295 | Val Loss: 0.395150 | LR: 0.000089
+Epoch  23/100 | Train Loss: 0.153680 | Val Loss: 0.403447 | LR: 0.000088
+Epoch  24/100 | Train Loss: 0.153985 | Val Loss: 0.394604 | LR: 0.000086
+Epoch  25/100 | Train Loss: 0.153598 | Val Loss: 0.394601 | LR: 0.000085
+Epoch  26/100 | Train Loss: 0.153733 | Val Loss: 0.394145 | LR: 0.000084
+Epoch  27/100 | Train Loss: 0.153511 | Val Loss: 0.400875 | LR: 0.000083
+
+Early stopping at epoch 27
+
+================================================================================
+Training Complete!
+================================================================================
+Best validation loss: 0.392062
+Model saved to: best_baseline_model.pth
+Training log: train_baseline.log
+================================================================================
+
+================================================================================
+Stage 3: Evaluation & Metrics
+================================================================================
+================================================================================
+NowcastingGPT Baseline Evaluation
+================================================================================
+
+Device: cuda
+
+Loading model from: best_baseline_model.pth
+Loaded model from epoch 12
+Validation loss: 0.392062
+
+Loading test data...
+Loading data from: nowcasting_gpt_data/formatted_csv/testing_AllLocations.csv
+  Loaded 164380 hours
+  Created 164356 sequences (obs=24h, pred=1h)
+Testing DataLoader created: 164356 sequences
+Test sequences: 164,356
+
+Running inference...
+Total predictions: 164,356
+
+================================================================================
+Computing metrics...
+================================================================================
+
+================================================================================
+=== NOWCASTINGGPT BASELINE RESULTS ===
+================================================================================
+RMSE : 0.5825 mm/h
+MAE  : 0.1490 mm/h
+CSI  : 0.3840
+POD  : 0.8345
+FAR  : 0.5843
+Extreme POD: 0.8345
+
+================================================================================
+=== PERSISTENCE BASELINE ===
+================================================================================
+RMSE : 0.8048
+MAE  : 0.1796
+CSI  : 0.3140
+POD  : 0.4779
+FAR  : 0.5221
+Extreme POD: 0.4779
+
+================================================================================
+=== IMPROVEMENT OVER BASELINE ===
+================================================================================
+RMSE :  -27.6%
+MAE  :  -17.0%
+CSI  :  +22.3%
+POD  :  +74.6%
+FAR  :  +11.9%
+Extreme POD:  +74.6%
+================================================================================
+
+
+================================================================================
+Stage 4: Generate Plots
+================================================================================
+================================================================================
+Generating Training Visualizations
+================================================================================
+
+Creating plots...
+✓ Saved: nowcasting_baseline_results/training_history.jpg
+✓ Saved: nowcasting_baseline_results/loss_convergence.jpg
+
+================================================================================
+Visualization Complete!
+================================================================================
+Generated files:
+  - nowcasting_baseline_results/training_history.jpg
+  - nowcasting_baseline_results/loss_convergence.jpg
+================================================================================
+
+================================================================================
+Pipeline Complete!
+================================================================================
+Output files:
+  - nowcasting_baseline_results/metrics_table.txt
+  - nowcasting_baseline_results/training_history.jpg
+  - nowcasting_baseline_results/loss_convergence.jpg
+  - best_baseline_model.pth
+
+End time: Fri Dec  5 19:03:38 EST 2025
+================================================================================
