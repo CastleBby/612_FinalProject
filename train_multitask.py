@@ -10,12 +10,23 @@ import yaml
 from tqdm import tqdm
 import os
 import random
+import argparse
 from transformer_model import get_model, set_seed, RANDOM_SEED
 
 
-def load_config():
-    with open('config.yaml', 'r') as f:
+def load_config(config_path=None):
+    """Load YAML config, defaulting to CONFIG_PATH env or config.yaml."""
+    if config_path is None:
+        config_path = os.environ.get('CONFIG_PATH', 'config.yaml')
+    with open(config_path, 'r') as f:
         return yaml.safe_load(f)
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(description='Train multi-task precipitation transformer')
+    parser.add_argument('--config', default=os.environ.get('CONFIG_PATH', 'config.yaml'),
+                        help='Path to config YAML (default: config.yaml or CONFIG_PATH env)')
+    return parser.parse_args()
 
 
 def weighted_mse(y_pred, y_true, precip_obs, quantile=0.9, extreme_weight=5.0):
@@ -48,10 +59,14 @@ def binary_cross_entropy_with_logits_weighted(logits, y_true_binary, rain_weight
 
 
 if __name__ == '__main__':
+    args = parse_args()
+    # Ensure downstream utilities see the chosen config path
+    os.environ['CONFIG_PATH'] = args.config
+
     # --------------------------------------------------------------
     # 0. Set random seeds for reproducibility
     # --------------------------------------------------------------
-    cfg = load_config()
+    cfg = load_config(args.config)
     
     # Get seed from config or use default
     seed = cfg.get('reproducibility', {}).get('random_seed', RANDOM_SEED)
@@ -142,13 +157,15 @@ if __name__ == '__main__':
     # 3. Build multi-task model
     # --------------------------------------------------------------
     input_dim = X_train.shape[-1]
+    num_encoder_layers = cfg['model'].get('num_encoder_layers', cfg['model']['num_layers'])
+
     model = get_model(
         'multitask',  # Use multi-task model
         input_dim=input_dim,
         seq_len=cfg['data']['seq_len'],
         d_model=cfg['model']['d_model'],
         nhead=cfg['model']['nhead'],
-        num_layers=cfg['model']['num_layers'],
+        num_layers=num_encoder_layers,
         embed_dim=cfg['model']['embed_dim'],
         dropout=cfg['model']['dropout'],
         num_locations=len(cfg['data']['locations']),
