@@ -347,16 +347,23 @@ class EncoderDecoderTransformer(nn.Module):
     def __init__(self, input_dim, seq_len, d_model=256, nhead=8, 
                  num_encoder_layers=4, num_decoder_layers=2,
                  embed_dim=64, dropout=0.1, num_locations=5, 
-                 feature_groups=None, location_coords=None):
+                 feature_groups=None, location_coords=None,
+                 use_series_decomposition=True):
         super().__init__()
         
         self.input_dim = input_dim
         self.seq_len = seq_len
         self.d_model = d_model
         self.embed_dim = embed_dim
+        self.use_series_decomposition = use_series_decomposition
         
         # Series decomposition
-        self.decomposition = SeriesDecomposition(kernel_size=25)
+        if use_series_decomposition:
+            self.decomposition = SeriesDecomposition(kernel_size=25)
+            self.trend_projection = nn.Linear(input_dim, embed_dim)
+        else:
+            self.decomposition = None
+            self.trend_projection = None
         
         # Feature group embeddings
         if feature_groups is not None:
@@ -419,11 +426,19 @@ class EncoderDecoderTransformer(nn.Module):
         """
         batch_size = x.size(0)
         
-        # 1. Decompose series into trend and seasonal
-        trend, seasonal = self.decomposition(x)
+        # 1. Series decomposition before embeddings (trend + seasonal)
+        if self.decomposition is not None:
+            trend, seasonal = self.decomposition(x)
+            features = seasonal
+        else:
+            trend = None
+            features = x
         
-        # 2. Feature embeddings (process both components)
-        x_embed = self.feature_embedding(x)
+        # 2. Feature embeddings on seasonal component + projected trend skip
+        x_embed = self.feature_embedding(features)
+        if self.trend_projection is not None and trend is not None:
+            trend_embed = self.trend_projection(trend)
+            x_embed = x_embed + trend_embed
         x_embed = self.input_projection(x_embed)
         
         # 3. Add location embeddings
@@ -691,8 +706,10 @@ class MultiTaskPrecipitationTransformer(nn.Module):
         # Series decomposition (Autoformer-style)
         if use_series_decomposition:
             self.decomposition = SeriesDecomposition(kernel_size=25)
+            self.trend_projection = nn.Linear(input_dim, embed_dim)
         else:
             self.decomposition = None
+            self.trend_projection = None
 
         # Feature group embeddings (domain-aware)
         if feature_groups is not None:
@@ -795,18 +812,24 @@ class MultiTaskPrecipitationTransformer(nn.Module):
         # loc_idx: (batch,)
         batch_size = x.size(0)
 
-        # Feature embeddings (domain-aware)
-        x = self.feature_embedding(x)  # (batch, seq_len, embed_dim)
+        # Optional series decomposition before embeddings
+        if self.decomposition is not None:
+            trend, seasonal = self.decomposition(x)
+            features = seasonal
+        else:
+            trend = None
+            features = x
+
+        # Feature embeddings (domain-aware) on seasonal component
+        x = self.feature_embedding(features)  # (batch, seq_len, embed_dim)
+
+        # Add projected trend skip (aligns with README diagram)
+        if self.trend_projection is not None and trend is not None:
+            trend_embed = self.trend_projection(trend)
+            x = x + trend_embed
 
         # Project to d_model
         x = self.input_projection(x)  # (batch, seq_len, d_model)
-
-        # Series decomposition (trend + seasonal) - applied after projection
-        if self.decomposition is not None:
-            # Decompose series into trend and seasonal components
-            trend, seasonal = self.decomposition(x)
-            # Use seasonal component (original - trend) for further processing
-            x = seasonal
 
         # Add location embeddings (broadcast across sequence)
         loc_emb = self.location_embedding(loc_idx)  # (batch, d_model)
