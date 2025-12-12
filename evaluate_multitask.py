@@ -4,7 +4,18 @@ import torch
 import numpy as np
 from sklearn.metrics import mean_squared_error, mean_absolute_error
 import yaml
-from transformer_model import get_model
+import matplotlib
+matplotlib.use('Agg')  # Non-interactive backend
+import matplotlib.pyplot as plt
+import seaborn as sns
+import os
+import pandas as pd
+from transformer_model import get_model, set_seed, RANDOM_SEED
+
+# Set plotting style
+sns.set_style('whitegrid')
+plt.rcParams['figure.figsize'] = (12, 6)
+plt.rcParams['font.size'] = 11
 
 
 def load_config():
@@ -60,7 +71,14 @@ if __name__ == '__main__':
         embed_dim=cfg['model']['embed_dim'],
         dropout=cfg['model']['dropout'],
         num_locations=len(cfg['data']['locations']),
-        feature_groups=cfg['model']['feature_groups']
+        feature_groups=cfg['model']['feature_groups'],
+        # Architecture configuration flags (defaults match ver_4 settings)
+        use_series_decomposition=cfg['model'].get('use_series_decomposition', False),
+        use_decoder=cfg['model'].get('use_decoder', False),
+        num_decoder_layers=cfg['model'].get('num_decoder_layers', 2),
+        use_local_attention=cfg['model'].get('use_local_attention', False),
+        local_kernel_size=cfg['model'].get('local_kernel_size', 3),
+        encoder_causal=cfg['model'].get('encoder_causal', True)
     ).to(device)
 
     checkpoint = torch.load('best_multitask_model.pth', map_location=device, weights_only=False)
@@ -161,4 +179,114 @@ if __name__ == '__main__':
 
     print("\n" + "="*70)
     print("Predictions saved to: multitask_predictions.npz")
+    print("="*70)
+    
+    # ========================================================================
+    # Plot training and validation losses
+    # ========================================================================
+    print("\n" + "="*70)
+    print("Generating loss plots...")
+    print("="*70)
+    
+    log_file = 'train_multitask.log'
+    if os.path.exists(log_file):
+        try:
+            # Read training log
+            df_log = pd.read_csv(log_file)
+            
+            # Create figure with subplots
+            fig, axes = plt.subplots(2, 2, figsize=(15, 10))
+            fig.suptitle('Multi-Task Training History', fontsize=16, fontweight='bold')
+            
+            # Plot 1: Total Loss
+            ax = axes[0, 0]
+            ax.plot(df_log['Epoch'], df_log['Train_Total_Loss'], 
+                   label='Train', linewidth=2, color='#2E86AB')
+            ax.plot(df_log['Epoch'], df_log['Val_Total_Loss'], 
+                   label='Validation', linewidth=2, color='#A23B72')
+            ax.set_xlabel('Epoch', fontweight='bold')
+            ax.set_ylabel('Total Loss', fontweight='bold')
+            ax.set_title('Total Loss (Regression + Classification)', fontweight='bold')
+            ax.legend(frameon=True, shadow=True)
+            ax.grid(True, alpha=0.3)
+            
+            # Plot 2: Regression Loss
+            ax = axes[0, 1]
+            ax.plot(df_log['Epoch'], df_log['Train_Reg_Loss'], 
+                   label='Train', linewidth=2, color='#2E86AB')
+            ax.plot(df_log['Epoch'], df_log['Val_Reg_Loss'], 
+                   label='Validation', linewidth=2, color='#A23B72')
+            ax.set_xlabel('Epoch', fontweight='bold')
+            ax.set_ylabel('Regression Loss', fontweight='bold')
+            ax.set_title('Regression Loss (Precipitation Amount)', fontweight='bold')
+            ax.legend(frameon=True, shadow=True)
+            ax.grid(True, alpha=0.3)
+            
+            # Plot 3: Classification Loss
+            ax = axes[1, 0]
+            ax.plot(df_log['Epoch'], df_log['Train_Class_Loss'], 
+                   label='Train', linewidth=2, color='#2E86AB')
+            ax.plot(df_log['Epoch'], df_log['Val_Class_Loss'], 
+                   label='Validation', linewidth=2, color='#A23B72')
+            ax.set_xlabel('Epoch', fontweight='bold')
+            ax.set_ylabel('Classification Loss', fontweight='bold')
+            ax.set_title('Classification Loss (Rain/No-Rain)', fontweight='bold')
+            ax.legend(frameon=True, shadow=True)
+            ax.grid(True, alpha=0.3)
+            
+            # Plot 4: Learning Rate
+            ax = axes[1, 1]
+            ax.plot(df_log['Epoch'], df_log['Learning_Rate'], 
+                   linewidth=2, color='#F18F01')
+            ax.set_xlabel('Epoch', fontweight='bold')
+            ax.set_ylabel('Learning Rate', fontweight='bold')
+            ax.set_title('Learning Rate Schedule (Cosine Annealing)', fontweight='bold')
+            ax.grid(True, alpha=0.3)
+            ax.set_yscale('log')
+            
+            plt.tight_layout()
+            plt.savefig('training_history.jpg', dpi=300, bbox_inches='tight')
+            plt.close()
+            
+            print("✓ Training history plot saved to training_history.jpg")
+            
+            # Additional plot: Loss convergence
+            fig, ax = plt.subplots(1, 1, figsize=(12, 6))
+            ax.plot(df_log['Epoch'], df_log['Train_Total_Loss'], 
+                   label='Training Loss', linewidth=2.5, color='#2E86AB', alpha=0.8)
+            ax.plot(df_log['Epoch'], df_log['Val_Total_Loss'], 
+                   label='Validation Loss', linewidth=2.5, color='#A23B72', alpha=0.8)
+            ax.fill_between(df_log['Epoch'], df_log['Train_Total_Loss'], 
+                           alpha=0.3, color='#2E86AB')
+            ax.fill_between(df_log['Epoch'], df_log['Val_Total_Loss'], 
+                           alpha=0.3, color='#A23B72')
+            
+            # Mark best epoch
+            best_epoch = df_log['Val_Total_Loss'].idxmin() + 1
+            best_val_loss = df_log['Val_Total_Loss'].min()
+            ax.axvline(best_epoch, color='green', linestyle='--', linewidth=2, 
+                      label=f'Best Epoch: {best_epoch}')
+            ax.scatter([best_epoch], [best_val_loss], color='green', s=200, 
+                      zorder=5, edgecolors='black', linewidth=2)
+            
+            ax.set_xlabel('Epoch', fontsize=14, fontweight='bold')
+            ax.set_ylabel('Total Loss', fontsize=14, fontweight='bold')
+            ax.set_title('Training Convergence (Multi-Task Learning)', 
+                        fontsize=16, fontweight='bold')
+            ax.legend(frameon=True, shadow=True, fontsize=12)
+            ax.grid(True, alpha=0.3, linestyle='--')
+            
+            plt.tight_layout()
+            plt.savefig('loss_convergence.jpg', dpi=300, bbox_inches='tight')
+            plt.close()
+            
+            print("✓ Loss convergence plot saved to loss_convergence.jpg")
+            
+        except Exception as e:
+            print(f"Warning: Could not generate loss plots: {e}")
+    else:
+        print(f"Warning: Training log not found at {log_file}")
+    
+    print("\n" + "="*70)
+    print("Evaluation complete!")
     print("="*70)
