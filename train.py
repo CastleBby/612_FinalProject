@@ -8,12 +8,22 @@ import yaml
 from tqdm import tqdm
 import os
 import random
+import argparse
 from transformer_model import get_model, weighted_physics_mse, set_seed, RANDOM_SEED
 
 
-def load_config():
-    with open('config.yaml', 'r') as f:
+def load_config(config_path=None):
+    if config_path is None:
+        config_path = os.environ.get('CONFIG_PATH', 'config.yaml')
+    with open(config_path, 'r') as f:
         return yaml.safe_load(f)
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(description='Train encoder-decoder precipitation transformer')
+    parser.add_argument('--config', default=os.environ.get('CONFIG_PATH', 'config.yaml'),
+                        help='Path to config YAML (default: config.yaml or CONFIG_PATH env)')
+    return parser.parse_args()
 
 
 def weighted_mse(y_pred, y_true, precip_obs, quantile=0.9, extreme_weight=5.0):
@@ -68,10 +78,13 @@ def get_loss_function(cfg, use_physics=True):
 
 
 if __name__ == '__main__':
+    args = parse_args()
+    os.environ['CONFIG_PATH'] = args.config
+
     # --------------------------------------------------------------
     # 0. Set random seeds for reproducibility
     # --------------------------------------------------------------
-    cfg = load_config()
+    cfg = load_config(args.config)
     
     # Get seed from config or use default
     seed = cfg.get('reproducibility', {}).get('random_seed', RANDOM_SEED)
@@ -144,7 +157,8 @@ if __name__ == '__main__':
         num_locations=len(cfg['data']['locations']),
         feature_groups=cfg['model']['feature_groups'],
         location_coords=location_coords,
-        use_advanced_layers=use_advanced
+        use_advanced_layers=use_advanced,
+        use_series_decomposition=cfg['model'].get('use_series_decomposition', False)
     ).to(device)
     
     total_params = sum(p.numel() for p in model.parameters())
