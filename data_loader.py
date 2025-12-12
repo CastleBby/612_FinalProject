@@ -7,7 +7,17 @@ from sklearn.model_selection import train_test_split
 import yaml
 from tqdm import tqdm
 import warnings
+import random
 warnings.filterwarnings('ignore')
+
+# Reproducibility settings
+RANDOM_SEED = 202511
+
+def set_seed(seed=RANDOM_SEED):
+    """Set random seeds for reproducibility."""
+    np.random.seed(seed)
+    random.seed(seed)
+    print(f"Random seed set to: {seed} for reproducibility")
 
 
 def load_config():
@@ -56,37 +66,63 @@ def add_temporal_features(df):
 
 if __name__ == '__main__':
     # ------------------------------------------------------------------
-    # 1. Load config & fetch raw data
+    # 0. Set random seed for reproducibility
     # ------------------------------------------------------------------
-    import time
     cfg = load_config()
-    all_raw_dfs = []
-    print("Fetching data for MD locations...")
-    for i, loc in enumerate(tqdm(cfg['data']['locations'])):
-        if i > 0:
-            # Add delay to avoid API rate limit
-            time.sleep(70)  # Wait 70 seconds between requests
-        df = fetch_openmeteo_data(
-            loc['lat'], loc['lon'],
-            cfg['data']['start_date'],
-            cfg['data']['end_date'],
-            cfg['data']['variables']
-        )
-        # Interpolate missing values
-        df = df.interpolate(method='linear').bfill().ffill()
+    seed = cfg.get('reproducibility', {}).get('random_seed', RANDOM_SEED)
+    set_seed(seed)
+    
+    print("="*80)
+    print("Data Loading with Reproducibility")
+    print("="*80)
+    
+    # ------------------------------------------------------------------
+    # 1. Check if raw data already exists
+    # ------------------------------------------------------------------
+    import os
+    import time
+    
+    if os.path.exists('md_weather_data.csv'):
+        print("Found existing md_weather_data.csv - Loading from file...")
+        full_raw = pd.read_csv('md_weather_data.csv', index_col=0, parse_dates=True)
+        print(f"Loaded {len(full_raw)} rows from cached file")
+        
+        # Reconstruct per-location dataframes for processing
+        all_raw_dfs = []
+        for loc in cfg['data']['locations']:
+            loc_key = f"{loc['lat']:.2f}_{loc['lon']:.2f}"
+            df_loc = full_raw[full_raw['location'] == loc_key].copy()
+            all_raw_dfs.append(df_loc)
+        
+        print(f"Split into {len(all_raw_dfs)} location dataframes")
+    else:
+        print("md_weather_data.csv not found - Fetching from API...")
+        all_raw_dfs = []
+        for i, loc in enumerate(tqdm(cfg['data']['locations'])):
+            if i > 0:
+                # Add delay to avoid API rate limit
+                time.sleep(70)  # Wait 70 seconds between requests
+            df = fetch_openmeteo_data(
+                loc['lat'], loc['lon'],
+                cfg['data']['start_date'],
+                cfg['data']['end_date'],
+                cfg['data']['variables']
+            )
+            # Interpolate missing values
+            df = df.interpolate(method='linear').bfill().ffill()
 
-        # Add temporal features
-        df = add_temporal_features(df)
+            # Add temporal features
+            df = add_temporal_features(df)
 
-        # Drop any remaining NaN
-        df = df.dropna()
+            # Drop any remaining NaN
+            df = df.dropna()
 
-        all_raw_dfs.append(df)
+            all_raw_dfs.append(df)
 
-    # Save the concatenated raw CSV (optional, for inspection)
-    full_raw = pd.concat(all_raw_dfs).sort_index()
-    full_raw.to_csv('md_weather_data.csv')
-    print(f"Raw data saved: {len(full_raw)} rows across {len(cfg['data']['locations'])} locations.")
+        # Save the concatenated raw CSV for future use
+        full_raw = pd.concat(all_raw_dfs).sort_index()
+        full_raw.to_csv('md_weather_data.csv')
+        print(f"Raw data saved to md_weather_data.csv: {len(full_raw)} rows across {len(cfg['data']['locations'])} locations.")
 
     # Print data quality statistics
     print("\n=== Data Quality Report ===")
@@ -161,10 +197,13 @@ if __name__ == '__main__':
     # ------------------------------------------------------------------
     # 3. Train / Val / Test split (temporal → shuffle=False)
     # ------------------------------------------------------------------
+    # Use configured seed for reproducibility
+    split_seed = cfg.get('reproducibility', {}).get('random_seed', 42)
+    
     X_temp, X_test, y_temp, y_test, loc_temp, loc_test = train_test_split(
         X, y, loc_idx,
         test_size=cfg['data']['test_split'],
-        random_state=42,
+        random_state=split_seed,
         shuffle=False
     )
 
@@ -172,9 +211,11 @@ if __name__ == '__main__':
     X_train, X_val, y_train, y_val, loc_train, loc_val = train_test_split(
         X_temp, y_temp, loc_temp,
         test_size=val_ratio,
-        random_state=42,
+        random_state=split_seed,
         shuffle=False
     )
+    
+    print(f"\nData split using random_state={split_seed} for reproducibility")
 
     # ------------------------------------------------------------------
     # 4. Save everything
