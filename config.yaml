@@ -1,4 +1,13 @@
-# Configuration for Precipitation Forecasting Project
+# ============================================================================
+# Configuration for Enhanced Precipitation Forecasting Project
+# With Geographic Attention and Multi-Scale Temporal Layers
+# ============================================================================
+
+# REPRODUCIBILITY SETTINGS
+reproducibility:
+  random_seed: 202511  # Fixed seed for reproducible results
+  deterministic: true   # Use deterministic algorithms
+
 data:
   start_date: '2000-01-01'
   end_date: '2024-12-31'  # Extended to 25 years for better generalization
@@ -25,24 +34,46 @@ data:
   val_split: 0.15
 
 model:
-  d_model: 512  # Increased model capacity
+  # Architecture parameters
+  d_model: 512  # Model capacity
   nhead: 8
-  num_layers: 6  # Deeper network for complex patterns
-  embed_dim: 128  # Increased embedding dimension
-  dropout: 0.15  # Slightly higher dropout for regularization
+  num_encoder_layers: 4  # Encoder depth (bi-directional)
+  num_decoder_layers: 2  # Decoder depth (with cross-attention)
+  num_layers: 6  # For backwards compatibility with old models
+  embed_dim: 128  # Embedding dimension
+  dropout: 0.2  # Higher dropout to prevent overfitting
+  
+  # Advanced layer controls (Encoder-Decoder architecture)
+  use_advanced_layers: true  # Enable: multi-scale attention, improved head
+  use_physics_loss: false     # Disable physics constraints (too restrictive)
+  physics_weight: 0.05       # Light physics weight if enabled
+  
+  # Architecture components
+  use_series_decomposition: false  # Enable series decomposition (trend + seasonal)
+  use_decoder: false  # Enable decoder with cross-attention to encoder
+  use_local_attention: false  # Enable local self-attention via temporal convolution
+  local_kernel_size: 3  # Kernel size for local attention (if enabled)
+  encoder_causal: true  # Use causal masking in encoder (false = bi-directional, matches README V3)
+  
+  # Training parameters
   lr: 0.0001  # Lower LR for multi-task stability
   batch_size: 128  # Larger batch for stable gradients
   epochs: 100  # More epochs for convergence
-  device: 'mps'  # For M1 Max acceleration
+  device: 'mps'  # For M1 Max acceleration (options: 'cuda', 'mps', 'cpu')
   gradient_clip: 1.0  # Gradient clipping for stability
   weight_decay: 0.01  # L2 regularization
   warmup_epochs: 10  # Learning rate warmup
-  feature_groups:  # For domain-aware embeddings (total: 11 features = 5 weather + 6 temporal)
+  patience: 15  # Early stopping patience
+  
+  # Feature grouping for domain-aware embeddings (total: 11 features = 5 weather + 6 temporal)
+  feature_groups:
     thermo: [0, 1]          # temperature_2m, relative_humidity_2m
     hydro: [2, 3]           # precipitation, pressure_msl
     dynamic: [4]            # wind_speed_10m
     temporal_diurnal: [5, 6]  # hour_sin, hour_cos (daily cycle)
     temporal_seasonal: [7, 8, 9, 10]  # day_sin, day_cos, month_sin, month_cos (seasonal patterns)
+  
+  # Loss function parameters
   extreme_weight: 10.0  # Increased weight for heavy rain events
 
 eval:
