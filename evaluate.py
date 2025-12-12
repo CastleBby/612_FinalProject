@@ -3,7 +3,7 @@ import torch
 import numpy as np
 from sklearn.metrics import mean_squared_error, mean_absolute_error
 import yaml
-from transformer_model import get_model
+from transformer_model import get_model, set_seed, RANDOM_SEED
 
 
 # --------------------------------------------------------------
@@ -44,6 +44,15 @@ def classification_metrics(y_true, y_pred, threshold):
 # --------------------------------------------------------------
 if __name__ == '__main__':
     cfg = load_config()
+    
+    # Set seed for reproducibility
+    seed = cfg.get('reproducibility', {}).get('random_seed', RANDOM_SEED)
+    set_seed(seed)
+    
+    print("="*80)
+    print("Evaluation with Enhanced Transformer Model")
+    print("="*80)
+    print(f"Random seed: {seed}")
 
     # ----- device (CUDA, MPS, or CPU) -----
     device = torch.device('cuda' if torch.cuda.is_available() else 'mps' if torch.backends.mps.is_available() else 'cpu')
@@ -58,19 +67,31 @@ if __name__ == '__main__':
 
     precip_idx = cfg['data']['variables'].index('precipitation')
 
-    # ----- build & load model -----
+    # ----- build & load model with location coordinates -----
+    location_coords = torch.tensor([
+        [loc['lat'], loc['lon']] for loc in cfg['data']['locations']
+    ], dtype=torch.float32)
+    
+    use_advanced = cfg['model'].get('use_advanced_layers', True)
+    
+    # Use encoder-decoder architecture (V3)
     model = get_model(
-        'transformer',
+        'encoder_decoder',
         input_dim=X_test.shape[-1],
         seq_len=cfg['data']['seq_len'],
         d_model=cfg['model']['d_model'],
         nhead=cfg['model']['nhead'],
-        num_layers=cfg['model']['num_layers'],
+        num_encoder_layers=cfg['model'].get('num_encoder_layers', 4),
+        num_decoder_layers=cfg['model'].get('num_decoder_layers', 2),
         embed_dim=cfg['model']['embed_dim'],
         dropout=cfg['model']['dropout'],
         num_locations=len(cfg['data']['locations']),
-        feature_groups=cfg['model']['feature_groups']
+        feature_groups=cfg['model']['feature_groups'],
+        location_coords=location_coords,
+        use_advanced_layers=use_advanced
     ).to(device)
+    
+    print(f"Model with advanced layers: {use_advanced}")
 
     checkpoint = torch.load('best_model.pth', map_location=device, weights_only=False)
     if isinstance(checkpoint, dict) and 'model_state_dict' in checkpoint:
