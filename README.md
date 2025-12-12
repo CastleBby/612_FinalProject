@@ -1,638 +1,586 @@
-# Hourly Precipitation Forecasting with Encoder-Decoder Transformer
+# Maryland Weather Forecasting - Multi-Task Transformer
 
-**Version 3: Inspired by "Attention is All You Need"**
-
----
-
-## 🚀 **What's New in V3**
-
-We redesigned the model from scratch using a proper **Encoder-Decoder architecture**:
-
-| Change | V2 (Failed) | V3 (Current) |
-|--------|-------------|--------------|
-| **Encoder** | Causal masking (only past) | Bi-directional (full 24h context) ✅ |
-| **Decoder** | None | With cross-attention to encoder ✅ |
-| **Multi-scale** | Removed | Re-added (proven in main branch) ✅ |
-| **Series Decomp** | None | Trend/seasonal separation ✅ |
-| **Parameters** | 7.2M (overfitted) | 8.5M (better architecture) ✅ |
-| **CSI** | 0.5857 ❌ | **TBD** (testing) 🚀 |
-
-**Goal**: Beat main branch baseline (CSI > 0.6181)
+**Branch**: `useNowcastingGPT` | **Seed**: 202511 | **Updated**: 2024-12-06
 
 ---
 
-## 📋 Table of Contents
+## Environment
 
-1. [Introduction](#introduction)
-2. [Problem Statement](#problem-statement)
-3. [Proposed Solution](#proposed-solution)
-4. [Architecture](#architecture)
-5. [Tools & Technologies](#tools--technologies)
-6. [Environment Setup](#environment-setup)
-7. [Code Entrypoint](#code-entrypoint)
-8. [Evaluation Metrics](#evaluation-metrics)
-9. [Results & Baseline Comparison](#results--baseline-comparison)
-10. [Reproducibility](#reproducibility)
-11. [HPC Commands](#hpc-commands)
-12. [Limitations & Future Work](#limitations--future-work)
+**Python**: 3.8.16  
+**Key packages**: PyTorch 1.11.0, pandas, numpy, pyyaml, matplotlib
 
----
-
-## 1. Introduction
-
-### Project Overview
-
-This project implements an **Encoder-Decoder Transformer** for hourly precipitation forecasting across 5 weather stations in Maryland. Inspired by "Attention is All You Need", the model properly separates:
-1. **Encoder**: Processes full 24-hour input with bi-directional attention
-2. **Decoder**: Generates prediction with cross-attention (no future leakage)
-
-Using 25 years of hourly weather data (2000-2024), V3 incorporates:
-- ✅ **Encoder-Decoder architecture** (proper separation of concerns)
-- ✅ **Multi-scale attention** (1h, 6h, 24h patterns)
-- ✅ **Series decomposition** (Autoformer-style trend/seasonal)
-- ✅ **Cross-attention** (decoder learns which past hours matter)
-- ✅ **Domain-aware embeddings** (weather + temporal features)
-
-**Goal**: Beat main branch baseline (CSI: 0.6181) by leveraging better architecture
-
----
-
-## 2. Problem Statement
-
-**Challenge**: Predicting hourly precipitation is difficult because:
-1. **Extreme events are rare** (~10% of hours have rain, <1% have heavy rain)
-2. **Temporal dependencies** are complex (flash floods vs seasonal patterns)
-3. **Limited spatial data** (only 5 stations in Maryland)
-4. **Distribution is heavy-tailed** (most hours have 0mm, rare events have >20mm)
-
-**Previous Approaches Failed** because:
-- ❌ No causal masking → models saw future data → overfit
-- ❌ Geographic attention useless with only 5 stations
-- ❌ Too many parameters → overfitting on limited data
-
----
-
-## 3. Proposed Solution
-
-### Encoder-Decoder Transformer Architecture
-
-**Core Innovation**: Separate encoding and decoding phases
-
-```
-┌───────────────────────────────────────────────────┐
-│           PAST 24 HOURS (Observed)                │
-│  [temp, humidity, precip, pressure, wind, ...]    │
-└────────────────┬──────────────────────────────────┘
-                 │
-                 ▼
-        ╔════════════════════╗
-        ║   ENCODER          ║
-        ║  (Bi-directional)  ║  ← Can see ALL 24h safely
-        ║                    ║     (it's all past data!)
-        ╚════════╦═══════════╝
-                 │ Memory
-                 │
-        ╔════════╩═══════════╗
-        ║   DECODER          ║
-        ║  (Cross-Attention) ║  ← Queries encoder for
-        ║                    ║     relevant past info
-        ╚════════╦═══════════╝
-                 │
-                 ▼
-        ┌────────────────────┐
-        │  NEXT 1 HOUR       │
-        │  (Precipitation)   │
-        └────────────────────┘
-```
-
-**Why This Works Better**:
-1. **Encoder doesn't need causal masking** - all input is from the past!
-2. **Decoder learns what to attend to** - not all hours are equally important
-3. **Cross-attention** - explicit mechanism to use encoder context
-4. **Better gradient flow** - skip connections across encoder-decoder bridge
-
-### Key Components
-
-1. **Series Decomposition** (Autoformer-inspired)
-   - Separates slow trends from seasonal patterns
-   - Model focuses on residuals, not noise
-
-2. **Multi-Scale Attention**
-   - Different heads learn different temporal scales
-   - Some focus on recent hours, others on daily cycles
-
-3. **Domain-Aware Embeddings**
-   - Weather features: thermo, hydro, dynamic groups
-   - Temporal features: hour, day, month (cyclical)
-
-This reduces false alarms (FAR) while maintaining high detection rate (POD).
-
-### Why These Metrics?
-
-| Metric | What It Measures | Why It Matters |
-|--------|------------------|----------------|
-| **RMSE/MAE** | Regression accuracy | Overall prediction quality |
-| **CSI** | Hit rate minus false alarms | Balance of detection vs false alarms |
-| **POD** | Probability of Detection | How many rain events we catch |
-| **FAR** | False Alarm Ratio | How often we falsely predict rain |
-
-For precipitation, CSI/POD/FAR matter because:
-- Forecasters care about **event detection** (did it rain?)
-- False alarms waste resources (emergency prep, evacuations)
-- Missed events can be dangerous (flash floods)
-
----
-
-## 4. Architecture
-
-### Evolution: V3 - Encoder-Decoder Architecture
-
-**Inspired by "Attention is All You Need" (Vaswani et al., 2017)**
-
-After analyzing performance issues in previous versions, we redesigned the model using a proper **Encoder-Decoder** architecture with:
-- ✅ **Bi-directional encoder** (can see full 24h input safely)
-- ✅ **Causal decoder** (generates prediction without future leakage)
-- ✅ **Cross-attention** (decoder attends to encoder output)
-- ✅ **Multi-scale temporal attention** (1h, 6h, 24h patterns)
-- ✅ **Series decomposition** (separates trend from seasonal components)
-
-### Model Architecture Diagram
-
-```
-                    ┌──────────────────────────────────────┐
-                    │      INPUT SEQUENCE (24 hours)       │
-                    │   [temperature, humidity, precip,    │
-                    │    pressure, wind, temporal_features]│
-                    └───────────────┬──────────────────────┘
-                                    │
-                                    ▼
-                    ┌──────────────────────────────────────┐
-                    │   SERIES DECOMPOSITION (Autoformer)  │
-                    │   • Moving Average (25-step kernel)  │
-                    │   • Separates Trend + Seasonal       │
-                    └───────────────┬──────────────────────┘
-                                    │
-                                    ▼
-                    ┌──────────────────────────────────────┐
-                    │    FEATURE EMBEDDING (Domain-Aware)  │
-                    │   • Thermo: [temp, humidity]         │
-                    │   • Hydro: [precip, pressure]        │
-                    │   • Dynamic: [wind]                  │
-                    │   • Temporal: [hour, day, month]     │
-                    └───────────────┬──────────────────────┘
-                                    │
-                                    ▼
-                    ┌──────────────────────────────────────┐
-                    │  LOCATION + POSITIONAL EMBEDDINGS    │
-                    │  • 5 station embeddings (learnable)  │
-                    │  • Sinusoidal position encoding      │
-                    └───────────────┬──────────────────────┘
-                                    │
-                                    │
-  ╔═════════════════════════════════╩═════════════════════════════════╗
-  ║                        ENCODER (Bi-directional)                    ║
-  ║                                                                     ║
-  ║  ┌────────────────────────────────────────────────────────────┐   ║
-  ║  │      🌐 MULTI-SCALE ATTENTION LAYER                        │   ║
-  ║  │  • Different heads attend to different time scales:        │   ║
-  ║  │    - Short-term: Recent hours (1h resolution)              │   ║
-  ║  │    - Medium-term: Convective buildup (6h patterns)         │   ║
-  ║  │    - Long-term: Diurnal cycle (24h patterns)               │   ║
-  ║  │  • Learnable scale factors per head                        │   ║
-  ║  │  • Gated fusion: σ(gate) * cat(scales) + residual          │   ║
-  ║  └────────────────────────────────────────────────────────────┘   ║
-  ║                             │                                       ║
-  ║                             ▼                                       ║
-  ║  ┌────────────────────────────────────────────────────────────┐   ║
-  ║  │   🔁 TRANSFORMER ENCODER LAYER (×4, Bi-directional)        │   ║
-  ║  │                                                             │   ║
-  ║  │   • Multi-Head Self-Attention (8 heads, NO causal mask)    │   ║
-  ║  │     → Can attend to all 24h positions                      │   ║
-  ║  │   • Feed-Forward Network (512 → 2048 → 512)               │   ║
-  ║  │   • Pre-LayerNorm + Residual Connections                   │   ║
-  ║  │   • GELU activation                                         │   ║
-  ║  └────────────────────────────────────────────────────────────┘   ║
-  ║                             │                                       ║
-  ║                             ▼                                       ║
-  ║  ┌────────────────────────────────────────────────────────────┐   ║
-  ║  │              LAYER NORM (Final Encoding)                   │   ║
-  ║  └────────────────────────────────────────────────────────────┘   ║
-  ║                             │                                       ║
-  ╚═════════════════════════════╪═══════════════════════════════════════╝
-                                │
-                                │ Memory (Encoder Output)
-                                │
-  ╔═════════════════════════════╪═══════════════════════════════════════╗
-  ║                        DECODER (Causal)                             ║
-  ║                             │                                       ║
-  ║  ┌────────────────────────────────────────────────────────────┐   ║
-  ║  │     🎯 LEARNABLE DECODER INPUT (Query)                     │   ║
-  ║  │  • Shape: (batch, 1, 512)                                  │   ║
-  ║  │  • Represents "what to predict" (next 1h precipitation)    │   ║
-  ║  └────────────────────────────────────────────────────────────┘   ║
-  ║                             │                                       ║
-  ║                             ▼                                       ║
-  ║  ┌────────────────────────────────────────────────────────────┐   ║
-  ║  │    🔒 DECODER LAYER (×2, with Cross-Attention)             │   ║
-  ║  │                                                             │   ║
-  ║  │  1. Masked Self-Attention (causal, prevents future access) │   ║
-  ║  │     └─> Only 1 query, so mask not strictly needed          │   ║
-  ║  │                                                             │   ║
-  ║  │  2. ⚡ CROSS-ATTENTION to Encoder Memory                   │   ║
-  ║  │     • Query: from decoder                                  │   ║
-  ║  │     • Key, Value: from encoder output                      │   ║
-  ║  │     • Learns which encoder positions are important         │   ║
-  ║  │                                                             │   ║
-  ║  │  3. Feed-Forward Network (512 → 2048 → 512)               │   ║
-  ║  │                                                             │   ║
-  ║  └────────────────────────────────────────────────────────────┘   ║
-  ║                             │                                       ║
-  ║                             ▼                                       ║
-  ║  ┌────────────────────────────────────────────────────────────┐   ║
-  ║  │              LAYER NORM (Final Decoding)                   │   ║
-  ║  └────────────────────────────────────────────────────────────┘   ║
-  ╚═════════════════════════════╪═══════════════════════════════════════╝
-                                │
-                                ▼
-                ┌──────────────────────────────────────┐
-                │   ✨ IMPROVED OUTPUT HEAD             │
-                │                                      │
-                │  Layer 1: 512 → 256                 │
-                │  Layer 2: 256 → 128 (+ skip from 512)│
-                │  Layer 3: 128 → 64  (+ skip from 256)│
-                │  Output:  64 → 1                    │
-                │                                      │
-                │  • Skip connections for gradient flow│
-                │  • GELU activations                 │
-                │  • LayerNorm + Dropout (0.2)        │
-                └──────────────────────────────────────┘
-                                │
-                                ▼
-                ┌──────────────────────────────────────┐
-                │   PRECIPITATION PREDICTION (mm/h)    │
-                └──────────────────────────────────────┘
-```
-
-### Why Encoder-Decoder? (vs. Previous Encoder-only)
-
-| Aspect | Encoder-only (V2) | Encoder-Decoder (V3) |
-|--------|------------------|----------------------|
-| **Input Processing** | Causal masking (only past) | Bi-directional (full 24h) ✅ |
-| **Information Flow** | Limited by masking | Full context in encoder ✅ |
-| **Prediction** | From last hidden state | Cross-attention to all encoder states ✅ |
-| **Future Leakage** | Prevented by mask | Prevented by decoder architecture ✅ |
-| **Gradient Flow** | Can be bottlenecked | Better via cross-attention ✅ |
-
-**Key Insight**: For weather prediction, the **input sequence** (past 24h) is fully observed, so we don't need causal masking in the encoder! Causal masking is only needed when generating future predictions autoregressively.
-
-### Key Architectural Innovations
-
-1. **Series Decomposition** (Autoformer-style)
-   ```python
-   # Separate trend from seasonal patterns
-   trend = moving_average(x, kernel_size=25)
-   seasonal = x - trend
-   ```
-   **Impact**: Encoder can use full context; decoder generates without leakage
-
-2. **Multi-Scale Attention** (NEW!)
-   ```python
-   # Different heads attend to different temporal scales
-   Q, K, V = project(x)  # (batch, nhead, seq_len, d_k)
-   scores = Q @ K^T / (scale_per_head * sqrt(d_k))
-   # scale_per_head is learnable for each head
-   # Some heads learn short-term, others long-term patterns
-   ```
-   **Impact**: Captures both hour-to-hour changes AND daily cycles
-
-3. **Cross-Attention** (Core of Encoder-Decoder)
-   ```python
-   # Decoder query: "what to predict"
-   # Encoder memory: "what happened in past 24h"
-   attention_weights = softmax(Q_decoder @ K_encoder^T)
-   output = attention_weights @ V_encoder
-   # Learns which past hours are most relevant
-   ```
-   **Impact**: Better than pooling last hidden state
-
-4. **Series Decomposition**
-   - Separates slow-moving trends from seasonal patterns
-   - Helps model focus on residuals
-   - Reduces noise in input
-
-5. **Improved Output Head**
-   - Skip connections for gradient flow
-   - Multi-scale feature extraction (512→256→128→64→1)
-   - Designed for heavy-tailed precipitation distribution
-
-### Model Parameters
-
-- **Total parameters**: ~8.5M
-- **d_model**: 512
-- **Attention heads**: 8
-- **Encoder layers**: 4 (bi-directional)
-- **Decoder layers**: 2 (with cross-attention)
-- **Dropout**: 0.2 (high regularization)
-
----
-
-## 5. Tools & Technologies
-
-### Core Framework
-- **PyTorch 2.0+**: Deep learning framework
-- **CUDA 12.6**: GPU acceleration (H100/A100 support)
-
-### Data & Processing
-- **Open-Meteo API**: Historical weather data (25 years)
-- **NumPy/Pandas**: Data preprocessing
-- **Scikit-learn**: Train/test split, metrics
-
-### Visualization
-- **Matplotlib**: Loss curves, results
-- **Seaborn**: Statistical plots
-
-### HPC
-- **SLURM**: Job scheduling
-- **Multi-GPU**: 4× H100 (48GB memory)
-
----
-
-## 6. Environment Setup
-
-### Step 1: Create Virtual Environment
-
+**Setup (one-time)**:
 ```bash
-python3 -m venv 612_FinalProject_env
-source 612_FinalProject_env/bin/activate
+bash setup_nowcasting_env.sh  # Creates 'nowcasting_env'
 ```
 
-### Step 2: Install PyTorch with CUDA
-
+**Activate**:
 ```bash
-pip3 install torch torchvision --index-url https://download.pytorch.org/whl/cu126
-```
-
-### Step 3: Install Dependencies
-
-```bash
-pip3 install -r requirements.txt
-# Installs: numpy, pandas, scikit-learn, PyYAML, requests, tqdm, matplotlib, seaborn
-```
-
-### Step 4: Verify Installation
-
-```bash
-python3 -c "import torch; print(f'PyTorch: {torch.__version__}'); print(f'CUDA: {torch.cuda.is_available()}')"
-```
-
-Expected output:
-```
-PyTorch: 2.x.x
-CUDA: True
+module load anaconda cuda/11.8
+source activate nowcasting_env
 ```
 
 ---
 
-## 7. Code Entrypoint
+## Quick Start (Single Command)
 
-### HPC Training (SLURM)
-
+### Option 1: NowcastingGPT Baseline (VQ-VAE + GPT)
 ```bash
-# Submit job (runs train_multitask.py + evaluate_multitask.py)
-sbatch run_train.sbatch
-
-# Monitor
-squeue -u $USER
-tail -f slurm-JOBID.out
-
-# Check results
-ls -lh *.pth *.log *.jpg
+sbatch run_baseline.sbatch
 ```
+**Architecture**: VQ-VAE tokenizer + Autoregressive GPT Transformer (scaled for time-series)  
+**Does everything**: Download data → Format → Train (2-stage) → Evaluate → Visualize  
+**Training time**: ~2 hours on H100 (2-stage: VQ-VAE → GPT)
 
-### File Structure
-
+### Option 2: V5 NOVEL Transformer (5 Unique Innovations)
+```bash
+sbatch run_v5.sbatch
 ```
-612_FinalProject/
-├── data_loader.py          # Data fetching & preprocessing
-├── train_multitask.py      # Multi-task training (MAIN)
-├── evaluate_multitask.py   # Evaluation + loss plots
-├── transformer_model.py    # Model architecture
-├── config.yaml             # Hyperparameters
-├── run_train.sbatch        # HPC job script
-├── requirements.txt        # Dependencies
-└── README.md               # This file
+**Smart pipeline**:
+- ✅ Checks if data exists (auto-downloads if missing)
+- ✅ Validates each step's outputs before continuing
+- ✅ Clear error messages if something fails
+- ✅ Uses H100-optimized hyperparameters
+- ✅ LSTM/GRU encoder + Multi-task heads
 
-Generated files:
-├── md_weather_data.csv     # Raw data cache
-├── processed_data.npz      # Preprocessed sequences
-├── best_multitask_model.pth    # Trained model
-├── train_multitask.log     # Training history
-├── training_history.jpg    # Loss plots (4 subplots)
-└── loss_convergence.jpg    # Single convergence plot
+### Option 3: Advanced Pipeline Control (Optional)
+```bash
+# Check what files exist/missing
+python run_pipeline.py --check-only
+
+# Run only data preparation
+python run_pipeline.py --pipeline data_only
+
+# Resume from specific stage
+python run_pipeline.py --start-from train_v5
+
+# Force rerun everything
+python run_pipeline.py --pipeline v5 --force
 ```
 
 ---
 
-## 8. Evaluation Metrics
+## Project Structure
 
-### Regression Metrics
+```
+# === ENTRY POINTS ===
+run_baseline.sbatch                   # Baseline: VQ-VAE + GPT (NowcastingGPT-style)
+run_v5.sbatch                         # V5 NOVEL: Novel Transformer with 5 Innovations
 
-- **RMSE** (Root Mean Squared Error): Overall prediction accuracy
-  ```
-  RMSE = sqrt(mean((y_pred - y_true)²))
-  ```
+# === BASELINE MODEL (VQ-VAE + GPT) ===
+nowcastinggpt_vqvae.py                # VQ-VAE + GPT architecture definition
+train_nowcastinggpt_baseline.py       # 2-stage training (VQ-VAE → GPT)
+evaluate_nowcastinggpt_baseline.py    # Compute metrics (to be created)
+visualize_nowcastinggpt.py            # Generate plots (to be created)
 
-- **MAE** (Mean Absolute Error): Average prediction error
-  ```
-  MAE = mean(|y_pred - y_true|)
-  ```
+# === V5 NOVEL MODEL (Novel Transformer with 5 Innovations) ===
+model_v5.py                           # V5: Enhanced Transformer (ProbSparse, Instance Norm, Temporal Pooling)
+train_v5_improved.py                  # Enhanced training: mixup, noise, warmup, cosine
+evaluate_v5.py                        # Evaluation + baseline comparison
+visualize_v5.py                       # Generate training plots
 
-### Classification Metrics (Event Detection)
+# === OLD V5 (DEPRECATED - for reference only) ===
+# All old model files (model_v5_enhanced.py, model_v5_improved.py, model_v5_novel.py, etc.) have been DELETED
+# Only model_v5.py exists now to avoid confusion
+train_v5.py                           # OLD: No augmentation
 
-- **CSI** (Critical Success Index): Best overall metric
-  ```
-  CSI = TP / (TP + FP + FN)
-  ```
-  Balances hits vs false alarms. Higher is better.
+# === DATA PIPELINE (SHARED) ===
+nowcasting_gpt_data_downloader.py    # Download from Open-Meteo API (chunked, robust)
+nowcasting_gpt_data_formatter.py     # Format to CSV (timestamp,precip)
+nowcasting_gpt_collector_hourly.py   # PyTorch Dataset/DataLoader
 
-- **POD** (Probability of Detection): Hit rate
-  ```
-  POD = TP / (TP + FN)
-  ```
-  Fraction of rain events correctly detected.
-
-- **FAR** (False Alarm Ratio): False positive rate
-  ```
-  FAR = FP / (TP + FP)
-  ```
-  Fraction of predictions that were false alarms. Lower is better.
-
-- **Extreme POD**: POD for heavy rain events (>90th percentile)
-
-### Baseline Comparison
-
-**Persistence Model**: Predict next hour = current hour
-- Simple but effective for short-term forecasting
-- Our model must beat this to be useful!
+# === UTILITIES ===
+check_and_prepare_data.py            # Auto data checker & downloader
+run_pipeline.py                       # Advanced pipeline control (optional)
+config.yaml                           # Single source of truth (locations, hyperparams)
+FIX_ISSUE.md                         # Troubleshooting & version history
+```
 
 ---
 
-## 9. Results & Baseline Comparison
+## Data Format
 
-### Model Evolution Timeline
+**CSV**: `YYYYMMDDHHmm,precipitation_mm_per_hour`  
+**Example**:
+```
+201306201200,28.53
+201306201300,28.46
+```
 
-| Version | Architecture | CSI | RMSE | Status |
-|---------|-------------|-----|------|--------|
-| **Main Branch** | Simple Transformer + Multi-scale Attn | **0.6181** | 0.4132 | Baseline ✅ |
-| V2 (Ver 2) | + Causal mask + Temporal conv + Recency | 0.5857 ❌ | 0.3798 | Overfitting |
-| **V3 (Current)** | Encoder-Decoder + Multi-scale | **TBD** | **TBD** | Testing 🚀 |
+**Source**: Open-Meteo Historical API  
+**Locations**: 5 Maryland stations (Baltimore, Annapolis, Cumberland, Ocean City, Hagerstown)  
+**Date range**: 2000-2024 (25 years)  
+**Expected rows**: ~1,095,000 (219,168 per location)
 
-### Performance Comparison with Main Branch
+---
 
-**Main Branch (Baseline)**:
-- Architecture: Feature embeddings → Multi-scale attention (1h/6h/24h) → Transformer encoder
-- Key innovation: Parallel attention at different resolutions
-- Results:
-  - ✅ **CSI: 0.6181** (better than persistence 0.6181)
-  - RMSE: 0.3798
-  - POD: 0.7102
-  - Extreme POD: 0.7363
+## Models Comparison
 
-**V2 (Previous Attempt - FAILED)**:
-- Problem: Overfitting with causal masking in encoder
-  - CSI dropped to 0.5857 ❌
-  - Added too many specialized layers
-  - Restrictive physics loss
+### Baseline: NowcastingGPT (Adapted for Time Series)
+- **Parameters**: ~22M total (VQ-VAE: ~5M, GPT: ~17M)
+- **Architecture**: VQ-VAE + GPT Transformer (two-stage, matching [original paper](https://github.com/Cmeo97/NowcastingGPT))
+- **Training**: Stage 1 (VQ-VAE) + Stage 2 (GPT Transformer)
+- **Purpose**: Proper implementation of NowcastingGPT adapted for time series
+- **Adaptation**: Spatial (radar images) → Temporal (precipitation sequences)
 
-**V3 (Current - Encoder-Decoder)**:
-- **Why it should work better**:
-  1. ✅ Encoder can see full 24h context (no unnecessary masking)
-  2. ✅ Decoder prevents future leakage through architecture
-  3. ✅ Cross-attention learns which past hours matter most
-  4. ✅ Series decomposition reduces noise
-  5. ✅ Multi-scale attention (proven effective in main branch)
-  
-- **Expected improvements**:
-  - Better gradient flow via cross-attention
-  - More parameter-efficient (focused architecture)
-  - Captures multi-scale patterns like main branch
-  - Plus benefits of encoder-decoder structure
+**Our Baseline vs Original NowcastingGPT**:
+
+| Aspect | Original NowcastingGPT | Our NowcastingGPT Baseline |
+|--------|------------------------|----------------------------|
+| **Architecture** | VQ-VAE + GPT Transformer ✓ | VQ-VAE + GPT Transformer ✓ |
+| **Parameters** | ~400M | ~22M (scaled for 2h training) |
+| **Input** | Radar images (spatial) | Time series (temporal) |
+| **Tokenization** | VQ-VAE discrete tokens ✓ | VQ-VAE discrete tokens ✓ |
+| **Encoder** | Spatial convolutions | Temporal (1D) convolutions |
+| **Codebook** | Vector Quantization ✓ | Vector Quantization ✓ |
+| **Transformer** | Autoregressive GPT ✓ | Autoregressive GPT ✓ |
+| **Training** | Two-stage ✓ | Two-stage ✓ |
+| **Model Type** | Generative | Generative |
+
+✓ = Core architecture component preserved
+
+---
+
+### Architecture Diagrams
+
+#### Our NowcastingGPT Baseline Architecture (Adapted for Time Series)
+```
+Input: [24 hours precipitation sequence]
+         ↓
+┌─────────────────────────────────────────┐
+│ STAGE 1: VQ-VAE TOKENIZER (~5M params)  │
+├─────────────────────────────────────────┤
+│  Encoder (1D Conv layers)               │
+│  - 64 → 128 → 256 channels              │
+│  - Temporal downsampling                │
+│  - Output: Continuous latent (256D)     │
+│         ↓                                │
+│  Vector Quantizer (Codebook)            │
+│  - 512 discrete tokens                  │
+│  - Commitment loss                      │
+│  - Output: Discrete token indices       │
+│         ↓                                │
+│  Decoder (1D Transposed Conv)           │
+│  - 256 → 128 → 64 channels              │
+│  - Temporal upsampling                  │
+│  - Reconstructs input                   │
+└─────────────────────────────────────────┘
+         ↓
+   [Discrete Tokens]
+         ↓
+┌─────────────────────────────────────────┐
+│ STAGE 2: GPT TRANSFORMER (~17M params)  │
+├─────────────────────────────────────────┤
+│  Token + Positional Embedding (256D)    │
+│         ↓                                │
+│  Transformer Decoder                    │
+│  - 8 layers                             │
+│  - 8 attention heads                    │
+│  - 1024 FFN dimension                   │
+│  - Causal masking (autoregressive)      │
+│  - Dropout 0.1                          │
+│         ↓                                │
+│  Output Projection (256D → 512 vocab)   │
+└─────────────────────────────────────────┘
+         ↓
+   [Predicted Future Tokens]
+         ↓
+   [VQ-VAE Decoder (from Stage 1)]
+         ↓
+Output: Future precipitation sequence
+
+Training: Two-stage
+  1. Train VQ-VAE (reconstruction)
+  2. Train GPT (token prediction, VQ-VAE frozen)
+```
+
+#### Original NowcastingGPT Architecture (from [GitHub](https://github.com/Cmeo97/NowcastingGPT))
+```
+Input: [Radar Image Sequence]
+         ↓
+┌──────────────────────────────┐
+│  Stage 1: VQ-VAE Tokenizer   │
+│  - Encoder (spatial)         │
+│  - Codebook (discrete tokens)│
+│  - Decoder (reconstruction)  │
+└──────────────────────────────┘
+         ↓
+   [Discrete Tokens]
+         ↓
+┌──────────────────────────────┐
+│  Stage 2: GPT Transformer    │
+│  - Autoregressive generation │
+│  - 400M parameters           │
+│  - Extreme Value Loss (EVL)  │
+└──────────────────────────────┘
+         ↓
+   [Token Sequence]
+         ↓
+   [VQ-VAE Decoder]
+         ↓
+Output: Future radar images
+```
+
+**Key Difference**: Original NowcastingGPT processes **spatial data (radar images)** with a two-stage generative model, while our baseline processes **temporal data (time series)** with a single-stage predictive model.
+
+#### Our V5: Enhanced Transformer with Proven Techniques
+```
+Input: [24 hours precipitation]
+         ↓
+┌─────────────────────────────────────────┐
+│  VQ-VAE Encoder (ENABLED)               │
+│  - Loaded from baseline                 │
+│  - Discrete tokenization (256D)         │
+│  - Frozen weights                       │
+└─────────────────────────────────────────┘
+         ↓
+┌─────────────────────────────────────────┐
+│  Input Projection                        │
+│  - Concatenate: raw + VQ-VAE features   │
+│  - Linear: (1+256) → 512                 │
+└─────────────────────────────────────────┘
+         ↓
+┌─────────────────────────────────────────┐
+│  Instance Normalization                 │
+│  - Normalize each sequence independently│
+│  - From foundation models (Chronos, TimesFM)│
+└─────────────────────────────────────────┘
+         ↓
+┌─────────────────────────────────────────┐
+│  Positional Encoding                    │
+│  - Sinusoidal (fixed)                   │
+└─────────────────────────────────────────┘
+         ↓
+┌─────────────────────────────────────────┐
+│  Pre-Norm Transformer (6 layers)         │
+│  - ProbSparse Attention (Informer)      │
+│    • O(L log L) complexity (not O(L²))   │
+│    • Selects top queries efficiently    │
+│  - 8 attention heads                     │
+│  - d_model: 512, FFN: 2048              │
+│  - Stochastic Depth (0.05)               │
+│  - Pre-layer normalization              │
+└─────────────────────────────────────────┘
+         ↓
+┌─────────────────────────────────────────┐
+│  Temporal Attention Pooling             │
+│  - Learned attention over timesteps      │
+│  - Proven from archit_test               │
+└─────────────────────────────────────────┘
+         ↓
+    ┌────────┴────────┐
+    ↓                 ↓
+[Regression Head]  [Classification Head]
+3-layer MLP        3-layer MLP
+512→256→128→1      512→256→128→1
+    ↓                 ↓
+  RMSE, MAE       CSI, POD, FAR, F1
+  (mm/h)          (Rain/No-rain)
+    └────────┬────────┘
+             ↓
+   Multi-Task Loss
+   (0.7 × MSE + 0.3 × Focal Loss)
+
+Data Augmentation (Training):
+  • Mixup (α=0.2)
+  • Gaussian noise (σ=0.01)
+```
+
+**V5: Key Enhancements (Built on Proven Techniques)**:
+
+1. **ProbSparse Attention** (Informer)
+   - Reduces complexity from O(L²) to O(L log L)
+   - Selects top queries based on sparsity measurement
+   - Efficient for long sequences (24h → future)
+
+2. **Instance Normalization** (Foundation Models)
+   - Normalizes each sequence independently
+   - Critical for time series (from Chronos, TimesFM)
+   - Better than batch normalization for forecasting
+
+3. **Temporal Attention Pooling** (archit_test)
+   - Learns which timesteps are most important
+   - Proven to work better than simple mean pooling
+   - Single-level (simpler than hierarchical)
+
+4. **Pre-Norm Transformer** (archit_test)
+   - More stable training than post-norm
+   - Better gradient flow
+   - 6 layers, 512d (deeper than baseline)
+
+5. **VQ-VAE Integration** (Baseline Strength)
+   - Uses baseline's noise reduction
+   - Discrete tokenization for robustness
+   - Frozen weights (no retraining)
+
+**Additional Features**:
+- **Stochastic Depth**: Progressive layer dropout (0.05)
+- **Data Augmentation**: Mixup + Gaussian noise
+- **Robust Losses**: MSE + Focal loss with label smoothing
+- **Advanced Training**: Warmup + cosine annealing, gradient accumulation
+
+**Target Performance**:
+- Beat Baseline: RMSE < 0.3798, CSI > 0.5857
+- Beat archit_test: RMSE < 0.3613, CSI > 0.6325
+
+---
+
+### V5: Enhanced Transformer with Proven Techniques
+- **Architecture**: VQ-VAE Features → Input Projection → Instance Normalization → Pre-Norm Transformer (ProbSparse) → Temporal Attention Pooling → Multi-Task Heads
+- **Model Size**: ~8-10M parameters (~35-40MB on disk)
+- **Implementation**: `model_v5.py`, `train_v5_improved.py`
+- **Model Config** (from `config.yaml` v5 section):
+  - `d_model`: 512 (increased for better capacity)
+  - `nhead`: 8 (Attention heads)
+  - `num_encoder_layers`: 6 (deeper model)
+  - `dim_feedforward`: 2048 (larger FFN)
+  - `dropout`: 0.2 (balanced)
+  - `head_dropout`: 0.3 (balanced)
+  - `stochastic_depth`: 0.05 (layer dropout)
+  - `use_probsparse`: true (Informer's ProbSparse attention)
+  - `batch_size`: 512 (large batch for H100)
+  - `gradient_accumulation_steps`: 2 (effective batch 1024)
+  - `learning_rate`: 1e-4 (balanced)
+  - `weight_decay`: 1e-3 (strong regularization)
+  - `warmup_steps`: 1000 (learning rate warmup)
+  - `epochs`: 150 (with early stopping on CSI+F1, patience=25)
+- **Key Enhancements** (Built on Proven Techniques):
+  1. **ProbSparse Attention** (Informer): O(L log L) complexity, selects top queries efficiently
+  2. **Instance Normalization** (Foundation Models): Normalizes each sequence independently
+  3. **Temporal Attention Pooling** (archit_test): Learns important timesteps
+  4. **Pre-Norm Transformer** (archit_test): More stable training, better gradient flow
+  5. **VQ-VAE Integration** (Baseline): Uses baseline's noise reduction, frozen weights
+- **Additional Features**:
+  - **VQ-VAE Integration**: `use_vqvae: true` (ENABLED for noise reduction from baseline)
+  - **Pre-Norm Transformer**: More stable training than post-norm (from archit_test)
+  - **Data Augmentation**: Mixup (α=0.2), Gaussian noise (σ=0.01)
+  - **Stronger Regularization**: Dropout 0.2, weight decay 1e-3, stochastic depth 0.05, label smoothing 0.1
+  - **Robust Losses**: Huber (vs MSE), Focal with label smoothing (0.1)
+  - **Extreme Reweighting**: 2.0x for 90th percentile events
+  - **Advanced Scheduler**: Warmup (1000 steps) + cosine annealing
+  - **Enhanced Monitoring**: F1, precision, recall (combined CSI+F1 early stopping)
+- **Purpose**: Beat both baselines with novel architecture (Target: RMSE < 0.3613, CSI > 0.6325)
+- **Research Contribution**: First adaptive VQ-VAE + Transformer fusion, explicit extreme event pathway, multi-scale + hierarchical architecture
+- **Note**: All hyperparameters from `config.yaml` (seed: 202511)
+
+---
+
+## Metrics
+
+| Metric | Description | Target |
+|--------|-------------|--------|
+| **RMSE** | Root Mean Squared Error | Lower is better |
+| **MAE** | Mean Absolute Error | Lower is better |
+| **CSI** | Critical Success Index | **PRIMARY - Higher is better** |
+| **POD** | Probability of Detection | Higher is better |
+| **FAR** | False Alarm Ratio | Lower is better |
+| **Extreme POD** | Detection rate for >90th percentile | Higher is better |
+
+**Rain threshold**: 0.1 mm/h
+
+---
+
+## Results History
 
 ### Persistence Baseline (Reference)
-
-| Metric | Value | Description |
-|--------|-------|-------------|
-| **RMSE** | 0.4132 | Predict next hour = current hour |
-| **MAE** | 0.0845 | Simple but surprisingly effective |
-| **CSI** | 0.6181 | Hard to beat for short-term! |
-| **POD** | 0.7640 | Good detection rate |
-| **FAR** | 0.2361 | Reasonable false alarms |
-| **Extreme POD** | 0.7453 | Good for heavy events |
-
-**Goal**: Beat main branch (CSI > 0.6181) AND persistence (CSI > 0.6181)
-
-### Training Convergence
-
-**Loss plots** (`training_history.jpg`):
-1. Total loss: Smooth convergence, no overfitting
-2. Regression loss: Decreases steadily
-3. Classification loss: Stabilizes around epoch 50
-4. Learning rate: Cosine annealing with warmup
-
-**Best model**: Epoch 68, Val Loss = 0.0210
-
-### Live Demo Features
-
-During presentation, we demonstrate:
-
-1. **Input**: Show 24-hour weather sequence
-2. **Prediction**: Model outputs amount + rain probability
-3. **Visualization**: 
-   - Loss convergence plots
-   - Prediction vs actual comparison
-   - Attention heatmap (which hours matter most)
-4. **Comparison**: Side-by-side with persistence baseline
-
-### Sample Prediction
-
 ```
-Input: Last 24 hours of weather data
-    Hour -23: temp=15°C, humidity=65%, precip=0mm
-    Hour -22: temp=16°C, humidity=70%, precip=0mm
-    ...
-    Hour -1:  temp=18°C, humidity=85%, precip=2.5mm
+RMSE: 0.4009 | MAE: 0.0820 | CSI: 0.6145 | POD: 0.7612 | FAR: 0.2388 | Extreme POD: 0.7459
+```
 
-Model Output:
-    Precipitation: 3.2 mm/h
-    Rain probability: 0.87 (87%)
-    → Prediction: RAIN, 3.2mm
+### Simple Transformer Baseline (Pending)
+**Status**: Awaiting complete data download (all 5 locations)  
+**Model**: 2.3M parameters, 4-layer encoder  
+**Expected**: CSI 0.62-0.64, RMSE 0.36-0.39  
+**Note**: This is NOT the 400M-param NowcastingGPT from literature
 
-Actual: 3.5 mm/h (CORRECT, error = 0.3mm)
+### V5 NOVEL: Novel Transformer with 5 Unique Innovations (Current - H100 Optimized)
+**Status**: Ready for training  
+**Model**: ~20M parameters (d_model=512, 6 encoder + 3 decoder layers)  
+**Hardware**: Optimized for H100 GPUs (batch_size=256, lr=2e-4)  
+**Target**: Beat simple transformer baseline with:
+- Better CSI (>0.65) through focal loss + direct CSI optimization
+- Better RMSE (<0.33) through enhanced regression head + larger capacity
+- Better extreme event detection through deeper classification head
+- Faster convergence with optimized hyperparameters
+
+---
+
+## Output Files
+
+### After running `sbatch run_nowcasting_baseline.sbatch`:
+```
+nowcasting_baseline_results/
+├── metrics.json              # All metrics in JSON
+├── training_history.jpg      # 2-panel: loss curves + LR schedule
+├── loss_convergence.jpg      # Convergence with best epoch marked
+└── best_baseline_model.pth   # Trained model
+
+nowcasting_gpt_data/
+├── raw_weather_data.csv      # Downloaded data (~1.1M rows)
+└── formatted_data_*.csv      # Train/val/test splits
+```
+
+### After running `sbatch run_v5.sbatch`:
+```
+v5_results/
+├── metrics.json              # All metrics + baseline comparison
+├── training_history.jpg      # 6-panel: losses, RMSE, CSI, POD/FAR
+├── loss_convergence.jpg      # Convergence with best CSI marked
+├── best_v5_model.pth         # Trained model (~20MB for 5M params)
+├── train_v5.log              # Training log
+└── evaluate_v5.log           # Evaluation log
+```
+
+**Model Size Comparison**:
+- Old V4: 231MB (many features, different architecture)
+- Simple Baseline: 8.9MB (2.3M params)
+- V5 NOVEL: ~25-30MB (6-7M params, novel architecture with 5 innovations)
+
+---
+
+## Manual Step-by-Step
+
+### Baseline Model
+```bash
+# 1. Download data (15-20 min, chunked by 5-year periods)
+python nowcasting_gpt_data_downloader.py
+# Verify: Should show "5/5 locations successful, ~1,095,000 records"
+
+# 2. Format to CSV
+python nowcasting_gpt_data_formatter.py
+
+# 3. Train baseline
+python nowcasting_gpt_train_baseline.py
+
+# 4. Evaluate baseline
+python nowcasting_gpt_evaluate_baseline.py
+
+# 5. Visualize
+python visualize_baseline.py
+```
+
+### V5 NOVEL Model (after data download)
+```bash
+# Train V5 NOVEL (uses existing formatted data + VQ-VAE features)
+python train_v5_improved.py
+
+# Evaluate V5 NOVEL
+python evaluate_v5.py
+
+# Visualize V5 NOVEL
+python visualize_v5.py
 ```
 
 ---
 
-## 10. Reproducibility
+## Troubleshooting
 
-### Random Seed: 202511
+### Missing Data Files
+**Error**: `FileNotFoundError: nowcasting_gpt_data/formatted_data_train.csv`
 
-All random processes use **seed 202511** for reproducibility:
+**Solution**:
+```bash
+# Quick fix: Auto-download and format
+python check_and_prepare_data.py
 
+# Or use robust pipeline
+python run_pipeline.py --pipeline data_only
+```
+
+### Incomplete Data (< 1.1M rows)
+```bash
+rm -rf nowcasting_gpt_data/
+python check_and_prepare_data.py --force
+```
+
+### CUDA Out of Memory
+**Error**: `RuntimeError: CUDA out of memory`
+
+**Solution**: Edit `train_v5_improved.py` line ~196:
 ```python
-# PyTorch
-torch.manual_seed(202511)
-torch.cuda.manual_seed_all(202511)
-torch.backends.cudnn.deterministic = True
-
-# NumPy
-np.random.seed(202511)
-
-# Python
-random.seed(202511)
-
-# Scikit-learn
-train_test_split(..., random_state=202511)
+batch_size = 128  # Reduce from 256
+# Or reduce model size
+d_model = 256  # Reduce from 512
 ```
 
-### Configuration File
-
-```yaml
-# config.yaml
-reproducibility:
-  random_seed: 202511
-  deterministic: true
-
-model:
-  d_model: 512
-  nhead: 8
-  num_layers: 6
-  dropout: 0.2
-  batch_size: 128
-  lr: 0.0001
-  epochs: 100
+### Training Failed Silently
+Check if files exist:
+```bash
+ls -lh v5_results/best_v5_model.pth
+ls -lh v5_results/training_history.npy
 ```
 
-### Reproducibility Checklist
+Use pipeline checker:
+```bash
+python run_pipeline.py --check-only
+```
 
-- ✅ Fixed random seed in all files
-- ✅ Deterministic CUDA operations
-- ✅ No shuffling in temporal data split
-- ✅ Fixed train/val/test split
-- ✅ Same data preprocessing pipeline
-- ✅ Same model initialization
-
-**Result**: Run code twice → get identical results!
+### Environment Issues
+```bash
+conda env remove -n nowcasting_env
+bash setup_nowcasting_env.sh
+```
 
 ---
 
-## 11. HPC Commands
+## Key Features
+
+- ✅ Single command execution
+- ✅ Reproducible (seed 202511)
+- ✅ Chunked download (handles API limits)
+- ✅ All 6 metrics computed
+- ✅ Visualizations auto-generated
+- ✅ HPC-ready (SLURM)
+
+---
+
+## Workflow
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ 1. Download & Format Data (run once)                       │
+│    → sbatch run_nowcasting_baseline.sbatch                  │
+│    → Gets ~1.1M rows from 5 locations (2000-2024)          │
+└─────────────────────────────────────────────────────────────┘
+                            ↓
+┌─────────────────────────────────────────────────────────────┐
+│ 2. Train Baseline (NowcastingGPT)                          │
+│    → Simple transformer for benchmarking                    │
+│    → Expected: CSI ~0.62-0.64, RMSE ~0.36-0.39             │
+└─────────────────────────────────────────────────────────────┘
+                            ↓
+┌─────────────────────────────────────────────────────────────┐
+│ 3. Train V5 NOVEL (Novel Transformer with 5 Innovations)    │
+│    → sbatch run_v5.sbatch                                   │
+│    → Uses same data, enhanced architecture                  │
+│    → Target: Beat baseline on CSI and RMSE                  │
+└─────────────────────────────────────────────────────────────┘
+                            ↓
+┌─────────────────────────────────────────────────────────────┐
+│ 4. Compare Results                                          │
+│    → V5 metrics.json includes baseline comparison          │
+│    → Check improvement percentages                          │
+└─────────────────────────────────────────────────────────────┘
+```
+
+## Next Steps
+
+1. **Complete data download**: Fix incomplete data issue (get all 5 locations)
+2. **Train baseline**: Establish NowcastingGPT benchmark
+3. **Train V5 NOVEL**: Run novel transformer with 5 unique innovations
+4. **Compare**: Verify V5 NOVEL beats both baselines (Target: RMSE < 0.3613, CSI > 0.6325)
+5. **Iterate**: Tune hyperparameters if needed (learning rate, dropout, etc.)
+
+
+---
+
+## HPC Commands
 
 ### Job Submission
 
 ```bash
 # Submit training job
 sbatch run_train.sbatch
-
 # Output: Submitted batch job JOBID
 ```
 
@@ -640,8 +588,16 @@ sbatch run_train.sbatch
 
 ```bash
 # Check job status
-squeue -u shhuang  # Replace with your username
+squeue -u [USERNAME]  # Replace with your username
+squeue -u shhuang
+```
 
+#### keep watching / monitoring
+```bash
+watch -n 1 squeue -u [USERNAME]
+watch -n 1 squeue -u shhuang
+```
+```bash
 # Check available GPUs
 sinfo -p gpu -t idle -o "%n %G"
 
@@ -675,177 +631,4 @@ Current setup (`run_train.sbatch`):
 #SBATCH --time=08:00:00        # 8 hour limit
 ```
 
-**Optimizations enabled**:
-- cuDNN benchmarking (faster convolutions)
-- TF32 precision (faster on H100/A100)
-- Parallel data loading (4 workers)
-- Pinned memory (faster GPU transfer)
-- Automatic Mixed Precision (AMP)
-
 ---
-
-## 12. Architecture Evolution & Design Rationale
-
-### From Main Branch to V3
-
-#### Main Branch (Baseline - CSI: 0.6181)
-**Architecture**:
-```python
-Input → Feature Embeddings → Multi-Scale Attention (1h/6h/24h) → Transformer Encoder → Output
-```
-**What worked**:
-- ✅ Multi-scale attention captured different temporal patterns
-- ✅ Simple and effective
-- ✅ Beat persistence baseline
-
-**What could improve**:
-- Encoder-only architecture might bottleneck information
-- Last hidden state pooling loses context
-
-#### V2 (Failed - CSI: 0.5857 ❌)
-**Changes from main**:
-- Added causal masking to encoder (❌ MISTAKE!)
-- Added temporal convolution layers
-- Added recency-weighted attention
-- Added physics-informed loss (too restrictive)
-
-**Why it failed**:
-1. ❌ **Causal masking in encoder was wrong**: Input is ALL past data, doesn't need masking!
-2. ❌ **Too many specialized layers**: Overfitted on limited data (5 stations)
-3. ❌ **Physics loss too restrictive**: Prevented model from learning patterns
-4. ❌ **Lost what worked**: Removed multi-scale attention
-
-**Lesson learned**: Adding complexity != better performance
-
-#### V3 (Current - Testing 🚀)
-**Architecture philosophy**: "Don't fix what ain't broke, but use better structure"
-
-**What we kept from main branch**:
-- ✅ Multi-scale attention (proven to work)
-- ✅ Domain-aware embeddings
-- ✅ Feature grouping
-
-**What we improved**:
-1. **Encoder-Decoder structure** (from "Attention is All You Need")
-   - Encoder: Bi-directional (can see full 24h)
-   - Decoder: Cross-attention (learns what matters)
-   - Better than encoder-only + pooling
-
-2. **Series Decomposition** (from Autoformer)
-   - Separates trend from seasonal
-   - Reduces noise in input
-
-3. **Removed harmful components**:
-   - ❌ No causal masking in encoder (not needed!)
-   - ❌ No physics loss (too restrictive)
-   - ❌ No geographic attention (useless with 5 stations)
-
-**Why V3 should work**:
-- ✅ Combines proven components (multi-scale from main branch)
-- ✅ Better architecture (encoder-decoder > encoder-only)
-- ✅ No unnecessary complexity
-- ✅ Proper separation of concerns
-
-### Design Decisions Explained
-
-**Q1: Why encoder-decoder instead of encoder-only?**
-- **A**: Encoder-decoder explicitly models "what to predict" (decoder query) vs "what we observed" (encoder memory). Cross-attention learns which past hours matter most, rather than simple pooling.
-
-**Q2: Why bi-directional encoder when we worry about data leakage?**
-- **A**: The INPUT (past 24h) is fully observed - no leakage! We only need causal masking when generating FUTURE predictions autoregressively. Since we predict 1 hour ahead (not autoregressive), encoder can safely see all input.
-
-**Q3: Why keep multi-scale attention from main branch?**
-- **A**: Main branch proved it works (CSI: 0.6181). Different temporal scales (1h, 6h, 24h) capture different weather patterns. Don't throw away what works!
-
-**Q4: Why remove geographic attention?**
-- **A**: Only 5 stations, ~100-200km apart. Not enough spatial diversity for meaningful geographic relationships. Wasted parameters.
-
-**Q5: Why series decomposition?**
-- **A**: Separating slow trends (e.g., seasonal warming) from fast cycles (diurnal) helps model focus on relevant patterns. Proven in Autoformer for time series forecasting.
-
----
-
-## 13. Limitations & Future Work
-
-### Current Limitations
-
-1. **Spatial Coverage**: Only 5 stations in Maryland
-   - Can't capture large-scale weather systems
-   - Limited to regional predictions
-
-2. **Lead Time**: Only 1-hour ahead prediction
-   - Flash floods need 3-6 hour lead time
-   - Longer horizons are more challenging
-
-3. **Single Output**: Predicts single value
-   - No uncertainty quantification
-   - No ensemble predictions
-
-4. **Data Imbalance**: 90% of hours have no rain
-   - Model biased toward no-rain
-   - Extreme events are rare in training
-
-### Future Improvements
-
-#### 1. Expand Spatial Coverage
-- Add more weather stations (20-50)
-- Include satellite/radar data
-- Model synoptic-scale weather systems
-- Enable true spatial modeling (geographic attention would work!)
-
-#### 2. Multi-Horizon Forecasting
-- Predict 1h, 3h, 6h simultaneously
-- Use autoregressive decoder
-- Uncertainty grows with lead time
-
-#### 3. Uncertainty Quantification
-- Ensemble methods (train 10 models)
-- Monte Carlo dropout
-- Quantile regression (predict confidence intervals)
-
-#### 4. Advanced Architecture
-- **Perceiver-style attention**: Handle arbitrary inputs
-- **Neural ODEs**: Continuous-time dynamics
-- **Graph Neural Networks**: Explicit spatial relationships
-- **Hierarchical models**: Multi-scale in time AND space
-
-#### 5. Additional Features
-- **Numerical weather predictions** (NWP): Use forecast models as input
-- **Satellite imagery**: Cloud patterns
-- **Lightning data**: Storm intensity
-- **Soil moisture**: Flooding potential
-
-#### 6. Operational Deployment
-- Real-time data ingestion
-- API for forecasters
-- Mobile app integration
-- Automated alerts
-
----
-
-## 🎯 Summary
-
-This project demonstrates that **causal transformer models** can effectively predict hourly precipitation by:
-
-1. **Respecting temporal causality** (no future leakage)
-2. **Multi-task learning** (regression + classification)
-3. **Domain-aware features** (physics-informed embeddings)
-4. **Proper regularization** (dropout, causal masking)
-
-**Key Innovation**: Fixing causal masking was critical - previous models without it failed to generalize.
-
-**Impact**: Beats persistence baseline, providing value for real-world forecasting.
-
----
-
-## 📞 Contact
-
-**Author**: Johnson Huang  
-**Course**: DATA 612 Final Project  
-**Date**: November 2025  
-**Reproducibility Seed**: 202511
-
----
-
-**Last Updated**: November 28, 2025  
-**Model Version**: 3.0 (Causal + Multi-Task)
