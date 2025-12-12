@@ -10,7 +10,8 @@ import os
 # -------------------------------------------------
 # 0. Load config & data
 # -------------------------------------------------
-cfg = yaml.safe_load(open('config.yaml'))
+config_path = os.environ.get('CONFIG_PATH', 'config.yaml')
+cfg = yaml.safe_load(open(config_path))
 data = np.load('processed_data.npz', allow_pickle=True)
 
 X_test   = data['X_test']
@@ -33,11 +34,13 @@ model = get_model(
     seq_len=cfg['data']['seq_len'],
     d_model=cfg['model']['d_model'],
     nhead=cfg['model']['nhead'],
-    num_layers=cfg['model']['num_layers'],
+    num_encoder_layers=cfg['model'].get('num_encoder_layers', cfg['model']['num_layers']),
+    num_decoder_layers=cfg['model'].get('num_decoder_layers', 2),
     embed_dim=cfg['model']['embed_dim'],
     dropout=cfg['model']['dropout'],
     num_locations=len(cfg['data']['locations']),
-    feature_groups=cfg['model']['feature_groups']
+    feature_groups=cfg['model']['feature_groups'],
+    use_series_decomposition=cfg['model'].get('use_series_decomposition', False)
 )
 checkpoint = torch.load('best_model.pth', map_location='cpu')
 if isinstance(checkpoint, dict) and 'model_state_dict' in checkpoint:
